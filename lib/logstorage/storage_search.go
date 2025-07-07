@@ -2,6 +2,7 @@ package logstorage
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"slices"
@@ -487,6 +488,87 @@ func (s *Storage) GetStreams(ctx context.Context, tenantIDs []TenantID, q *Query
 // If limit > 0, then up to limit unique streams are returned.
 func (s *Storage) GetStreamIDs(ctx context.Context, tenantIDs []TenantID, q *Query, limit uint64) ([]ValueWithHits, error) {
 	return s.GetFieldValues(ctx, tenantIDs, q, "_stream_id", limit)
+}
+
+// GetTenantIDs returns tenantIDs for the given start and end.
+func (s *Storage) GetTenantIDs(ctx context.Context, start, end int64) ([]byte, error) {
+	return s.getTenantIDs(ctx, start, end)
+}
+
+func (s *Storage) getTenantIDs(ctx context.Context, start, end int64) ([]byte, error) {
+	workersCount := cgroup.AvailableCPUs()
+	stopCh := ctx.Done()
+
+	tenantIDs := make([]TenantID, workersCount)
+	processPartitions := func(pt *partition) {
+		tenants := pt.idb.searchTenants()
+		tenantIDs = append(tenantIDs, tenants...)
+	}
+
+	// Spin up workers
+	var wgWorkers sync.WaitGroup
+	workCh := make(chan *partition, workersCount)
+	wgWorkers.Add(workersCount)
+	for i := 0; i < workersCount; i++ {
+		go func() {
+			for pt := range workCh {
+				if needStop(stopCh) {
+					// The search has been canceled. Just skip all the scheduled work in order to save CPU time.
+					continue
+				}
+				processPartitions(pt)
+			}
+			wgWorkers.Done()
+		}()
+	}
+
+	// Select partitions according to the selected time range
+	s.partitionsLock.Lock()
+	ptws := s.partitions
+	minDay := start / nsecsPerDay
+	n := sort.Search(len(ptws), func(i int) bool {
+		return ptws[i].day >= minDay
+	})
+	ptws = ptws[n:]
+	maxDay := end / nsecsPerDay
+	n = sort.Search(len(ptws), func(i int) bool {
+		return ptws[i].day > maxDay
+	})
+	ptws = ptws[:n]
+
+	// Copy the selected partitions, so they don't interfere with s.partitions.
+	ptws = append([]*partitionWrapper{}, ptws...)
+
+	for _, ptw := range ptws {
+		ptw.incRef()
+	}
+	s.partitionsLock.Unlock()
+
+	// Schedule concurrent search across matching partitions.
+	for _, ptw := range ptws {
+		workCh <- ptw.pt
+	}
+
+	// Wait until workers finish their work
+	close(workCh)
+	wgWorkers.Wait()
+
+	// Decrement references to partitions
+	for _, ptw := range ptws {
+		ptw.decRef()
+	}
+
+	unique := make(map[TenantID]struct{}, len(tenantIDs))
+	for _, tid := range tenantIDs {
+		unique[tid] = struct{}{}
+	}
+
+	tenantIDs = make([]TenantID, 0, len(unique))
+	for tid := range unique {
+		tenantIDs = append(tenantIDs, tid)
+	}
+
+	return json.Marshal(tenantIDs)
 }
 
 func (s *Storage) runValuesWithHitsQuery(ctx context.Context, tenantIDs []TenantID, q *Query) ([]ValueWithHits, error) {
