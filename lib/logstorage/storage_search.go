@@ -2,7 +2,6 @@ package logstorage
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math"
 	"slices"
@@ -491,11 +490,11 @@ func (s *Storage) GetStreamIDs(ctx context.Context, tenantIDs []TenantID, q *Que
 }
 
 // GetTenantIDs returns tenantIDs for the given start and end.
-func (s *Storage) GetTenantIDs(ctx context.Context, start, end int64) ([]byte, error) {
+func (s *Storage) GetTenantIDs(ctx context.Context, start, end int64) ([]TenantID, error) {
 	return s.getTenantIDs(ctx, start, end)
 }
 
-func (s *Storage) getTenantIDs(ctx context.Context, start, end int64) ([]byte, error) {
+func (s *Storage) getTenantIDs(ctx context.Context, start, end int64) ([]TenantID, error) {
 	workersCount := cgroup.AvailableCPUs()
 	stopCh := ctx.Done()
 
@@ -568,7 +567,7 @@ func (s *Storage) getTenantIDs(ctx context.Context, start, end int64) ([]byte, e
 		tenantIDs = append(tenantIDs, tid)
 	}
 
-	return json.Marshal(tenantIDs)
+	return tenantIDs, nil
 }
 
 func (s *Storage) runValuesWithHitsQuery(ctx context.Context, tenantIDs []TenantID, q *Query) ([]ValueWithHits, error) {

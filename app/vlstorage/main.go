@@ -351,7 +351,7 @@ func GetStreamIDs(ctx context.Context, tenantIDs []logstorage.TenantID, q *logst
 }
 
 // GetTenantIDs returns tenantIDs from the storage by the given start and end.
-func GetTenantIDs(ctx context.Context, start, end int64) ([]byte, error) {
+func GetTenantIDs(ctx context.Context, start, end int64) ([]logstorage.TenantID, error) {
 	if localStorage != nil {
 		return localStorage.GetTenantIDs(ctx, start, end)
 	}

@@ -2,7 +2,6 @@ package logsql
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"math"
@@ -997,21 +996,6 @@ func ProcessAdminTenantsRequest(ctx context.Context, w http.ResponseWriter, r *h
 		return
 	}
 
-	sw := &syncWriter{
-		w: w,
-	}
-
-	var bwShards atomicutil.Slice[bufferedWriter]
-	bwShards.Init = func(shard *bufferedWriter) {
-		shard.sw = sw
-	}
-	defer func() {
-		shards := bwShards.All()
-		for _, shard := range shards {
-			shard.FlushIgnoreErrors()
-		}
-	}()
-
 	w.Header().Set("Content-Type", "application/json")
 
 	tenants, err := vlstorage.GetTenantIDs(ctx, start, end)
@@ -1020,18 +1004,7 @@ func ProcessAdminTenantsRequest(ctx context.Context, w http.ResponseWriter, r *h
 		return
 	}
 
-	var t []logstorage.TenantID
-	if err := json.Unmarshal(tenants, &t); err != nil {
-		httpserver.Errorf(w, r, "cannot unmarshal tenantIDs: %s", err)
-		return
-	}
-
-	resp := make([]string, 0, len(t))
-	for _, tenantID := range t {
-		resp = append(resp, fmt.Sprintf("%d:%d", tenantID.AccountID, tenantID.ProjectID))
-	}
-
-	WriteTenantsResponse(w, resp)
+	WriteTenantsResponse(w, tenants)
 }
 
 type syncWriter struct {

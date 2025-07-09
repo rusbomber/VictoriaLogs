@@ -2,6 +2,7 @@ package internalselect
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
@@ -266,7 +267,12 @@ func processTenantIDsRequest(ctx context.Context, w http.ResponseWriter, r *http
 		return fmt.Errorf("cannot obtain tenant IDs: %w", err)
 	}
 
-	return writeTenantIDs(w, tenantIDs, false)
+	tids, err := json.Marshal(tenantIDs)
+	if err != nil {
+		return fmt.Errorf("cannot marshal tenant IDs: %w", err)
+	}
+
+	return writeTenantIDs(w, tids, false)
 }
 
 type commonParams struct {

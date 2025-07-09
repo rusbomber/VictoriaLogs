@@ -416,11 +416,11 @@ func (s *Storage) GetStreamIDs(ctx context.Context, tenantIDs []logstorage.Tenan
 }
 
 // GetTenantIDs returns tenantIDs for the given start and end.
-func (s *Storage) GetTenantIDs(ctx context.Context, start, end int64) ([]byte, error) {
+func (s *Storage) GetTenantIDs(ctx context.Context, start, end int64) ([]logstorage.TenantID, error) {
 	return s.getTenantIDs(ctx, start, end)
 }
 
-func (s *Storage) getTenantIDs(ctx context.Context, start, end int64) ([]byte, error) {
+func (s *Storage) getTenantIDs(ctx context.Context, start, end int64) ([]logstorage.TenantID, error) {
 	ctxWithCancel, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -454,18 +454,18 @@ func (s *Storage) getTenantIDs(ctx context.Context, start, end int64) ([]byte, e
 		if err := json.Unmarshal(results[i], &tenats); err != nil {
 			return nil, fmt.Errorf("cannot unmarshal tenantIDs from storage node %d: %w", i, err)
 		}
+		// Deduplicate tenantIDs
 		for _, tenat := range tenats {
 			unique[tenat] = struct{}{}
 		}
 	}
 
-	// Deduplicate tenantIDs
 	tenantIDs := make([]logstorage.TenantID, 0, len(unique))
 	for key := range unique {
 		tenantIDs = append(tenantIDs, key)
 	}
 
-	return json.Marshal(tenantIDs)
+	return tenantIDs, nil
 }
 
 func (s *Storage) getValuesWithHits(ctx context.Context, limit uint64, resetHitsOnLimitExceeded bool,
