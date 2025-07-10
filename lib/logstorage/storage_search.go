@@ -498,10 +498,10 @@ func (s *Storage) getTenantIDs(ctx context.Context, start, end int64) ([]TenantI
 	workersCount := cgroup.AvailableCPUs()
 	stopCh := ctx.Done()
 
-	tenantIDs := make([]TenantID, workersCount)
-	processPartitions := func(pt *partition) {
+	tenantIDs := make([][]TenantID, workersCount)
+	processPartitions := func(pt *partition, workerID uint) {
 		tenants := pt.idb.searchTenants()
-		tenantIDs = append(tenantIDs, tenants...)
+		tenantIDs[workerID] = append(tenantIDs[workerID], tenants...)
 	}
 
 	// Spin up workers
@@ -509,16 +509,16 @@ func (s *Storage) getTenantIDs(ctx context.Context, start, end int64) ([]TenantI
 	workCh := make(chan *partition, workersCount)
 	wgWorkers.Add(workersCount)
 	for i := 0; i < workersCount; i++ {
-		go func() {
+		go func(workerID uint) {
 			for pt := range workCh {
 				if needStop(stopCh) {
 					// The search has been canceled. Just skip all the scheduled work in order to save CPU time.
 					continue
 				}
-				processPartitions(pt)
+				processPartitions(pt, workerID)
 			}
 			wgWorkers.Done()
-		}()
+		}(uint(i))
 	}
 
 	// Select partitions according to the selected time range
@@ -558,16 +558,18 @@ func (s *Storage) getTenantIDs(ctx context.Context, start, end int64) ([]TenantI
 	}
 
 	unique := make(map[TenantID]struct{}, len(tenantIDs))
-	for _, tid := range tenantIDs {
-		unique[tid] = struct{}{}
+	for _, tids := range tenantIDs {
+		for _, tid := range tids {
+			unique[tid] = struct{}{}
+		}
 	}
 
-	tenantIDs = make([]TenantID, 0, len(unique))
-	for tid := range unique {
-		tenantIDs = append(tenantIDs, tid)
+	tenants := make([]TenantID, 0, len(unique))
+	for k := range unique {
+		tenants = append(tenants, k)
 	}
 
-	return tenantIDs, nil
+	return tenants, nil
 }
 
 func (s *Storage) runValuesWithHitsQuery(ctx context.Context, tenantIDs []TenantID, q *Query) ([]ValueWithHits, error) {
