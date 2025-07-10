@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -262,17 +263,33 @@ func processTenantIDsRequest(ctx context.Context, w http.ResponseWriter, r *http
 		end = math.MaxInt64
 	}
 
+	var disableCompression bool
+	s := r.FormValue("disable_compression")
+	if s != "" {
+		disableCompression, err = strconv.ParseBool(s)
+		if err != nil {
+			return fmt.Errorf("cannot parse disable_compression=%q: %w", s, err)
+		}
+	}
+
 	tenantIDs, err := vlstorage.GetTenantIDs(ctx, start, end)
 	if err != nil {
 		return fmt.Errorf("cannot obtain tenant IDs: %w", err)
 	}
+
+	sort.Slice(tenantIDs, func(i, j int) bool {
+		if tenantIDs[i].AccountID != tenantIDs[j].AccountID {
+			return tenantIDs[i].AccountID < tenantIDs[j].AccountID
+		}
+		return tenantIDs[i].ProjectID < tenantIDs[j].ProjectID
+	})
 
 	tids, err := json.Marshal(tenantIDs)
 	if err != nil {
 		return fmt.Errorf("cannot marshal tenant IDs: %w", err)
 	}
 
-	return writeTenantIDs(w, tids, false)
+	return writeTenantIDs(w, tids, disableCompression)
 }
 
 type commonParams struct {

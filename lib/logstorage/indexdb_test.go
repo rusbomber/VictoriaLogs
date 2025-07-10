@@ -254,7 +254,7 @@ func TestStorageSearchStreamIDs(t *testing.T) {
 	closeTestStorage(s)
 }
 
-func TestGetTenantsIds(t *testing.T) {
+func TestGetTenantsIDs(t *testing.T) {
 	t.Parallel()
 
 	path := t.Name()
