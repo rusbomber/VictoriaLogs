@@ -217,6 +217,17 @@ func decRequestConcurrency() {
 func processSelectRequest(ctx context.Context, w http.ResponseWriter, r *http.Request, path string) bool {
 	httpserver.EnableCORS(w, r)
 	startTime := time.Now()
+	if strings.HasPrefix(path, "/select/vmalert/") {
+		vmalertRequests.Inc()
+		if len(*vmalertProxyURL) == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, "%s", `{"status":"error","msg":"for accessing vmalert flag '-vmalert.proxyURL' must be configured"}`)
+			return true
+		}
+		proxyVMAlertRequests(w, r)
+		return true
+	}
 	switch path {
 	case "/select/logsql/facets":
 		logsqlFacetsRequests.Inc()
@@ -332,6 +343,7 @@ func proxyVMAlertRequests(w http.ResponseWriter, r *http.Request) {
 		// Forward other panics to the caller.
 		panic(err)
 	}()
+	r.URL.Path = strings.TrimPrefix(r.URL.Path, "/select")
 	r.Host = vmalertProxyHost
 	vmalertProxy.ServeHTTP(w, r)
 }
@@ -394,4 +406,5 @@ var (
 	rulesRequests     = metrics.NewCounter(`vl_http_requests_total{path="/select/api/v1/rules"}`)
 	alertsRequests    = metrics.NewCounter(`vl_http_requests_total{path="/select/api/v1/alerts"}`)
 	notifiersRequests = metrics.NewCounter(`vl_http_requests_total{path="/select/api/v1/notifiers"}`)
+	vmalertRequests   = metrics.NewCounter(`vm_http_requests_total{path="/select/vmalert"}`)
 )
