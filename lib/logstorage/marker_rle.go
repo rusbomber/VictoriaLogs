@@ -389,12 +389,8 @@ func (rle boolRLE) Union(other boolRLE) boolRLE {
 
 	const inf = ^uint64(0) >> 1
 
-	for {
-		// Finished?
-		if (a.n == 0 && a.idx >= len(a.src)) &&
-			(b.n == 0 && b.idx >= len(b.src)) {
-			break
-		}
+	for !(a.n == 0 && a.idx >= len(a.src) &&
+		b.n == 0 && b.idx >= len(b.src)) {
 
 		// Remaining run lengths (∞ once a stream is exhausted).
 		nA := a.n
