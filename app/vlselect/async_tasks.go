@@ -66,7 +66,9 @@ var asyncTasksTmpl = template.Must(template.New("asyncTasks").Parse(`
     <table>
         <thead>
             <tr>
+                {{- if .ShowStorage }}
                 <th class="col-storage">Storage</th>
+                {{- end }}
                 <th class="col-created">Created</th>
                 <th class="col-type">Type</th>
                 <th class="col-status">Status</th>
@@ -81,7 +83,9 @@ var asyncTasksTmpl = template.Must(template.New("asyncTasks").Parse(`
         <tbody>
             {{- range .Tasks }}
             <tr>
+                {{- if $.ShowStorage }}
                 <td class="col-storage truncated" title="{{ .Storage }}">{{ .Storage }}</td>
+                {{- end }}
                 <td>{{ .Created }}</td>
                 <td>{{ .Type }}</td>
                 <td><span class="status {{ .Status }}">{{ .Status }}</span></td>
@@ -150,11 +154,16 @@ func processAsyncTasksRequest(ctx context.Context, w http.ResponseWriter, r *htt
 		}
 	}
 
+	// Check if we should show storage column (if any storage is not "local")
+	showStorage := !vlstorage.IsLocalStorage()
+
 	vm := struct {
-		Tasks      []row
-		ShowTenant bool
+		Tasks       []row
+		ShowTenant  bool
+		ShowStorage bool
 	}{
-		ShowTenant: showTenant,
+		ShowTenant:  showTenant,
+		ShowStorage: showStorage,
 	}
 
 	for _, t := range tasks {
