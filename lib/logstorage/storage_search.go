@@ -1295,13 +1295,7 @@ func (ddb *datadb) search(so *searchOptions, workCh chan<- *blockSearchWorkBatch
 		pws = appendPartsInTimeRange(pws, ddb.smallParts, so.minTimestamp, so.maxTimestamp)
 		pws = appendPartsInTimeRange(pws, ddb.inmemoryParts, so.minTimestamp, so.maxTimestamp)
 	} else {
-		for i := range so.pws {
-			p := so.pws[i].p
-			if p.ph.MinTimestamp > so.maxTimestamp || p.ph.MaxTimestamp < so.minTimestamp {
-				continue
-			}
-			pws = append(pws, so.pws[i])
-		}
+		pws = appendPartsInTimeRange(nil, so.pws, so.minTimestamp, so.maxTimestamp)
 	}
 
 	// Increase references to the searched parts, so they aren't deleted during search.
