@@ -9,56 +9,39 @@ import (
 	"net/url"
 
 	"github.com/VictoriaMetrics/VictoriaLogs/lib/logstorage"
+	"golang.org/x/sync/errgroup"
 )
 
 // ListAsyncTasks gathers all async tasks from every storage node and returns them along with the originating storage address.
 func (s *Storage) ListAsyncTasks(ctx context.Context) ([]logstorage.AsyncTaskInfoWithSource, error) {
-	// Fast-path for mis-configured storage.
 	if len(s.sns) == 0 {
 		return nil, nil
 	}
 
-	// Derive a cancelable context so that we can abort all in-flight
-	// requests as soon as the first error is encountered. This prevents
-	// returning partial results and avoids wasting resources.
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	g, ctx := errgroup.WithContext(ctx)
+	results := make([][]logstorage.AsyncTaskInfoWithSource, len(s.sns))
 
-	// Aggregate tasks from all storage nodes.
-	outCh := make(chan []logstorage.AsyncTaskInfoWithSource, len(s.sns))
-	errCh := make(chan error, len(s.sns))
-
-	for _, sn := range s.sns {
-		go func(sn *storageNode) {
+	for i, sn := range s.sns {
+		i, sn := i, sn
+		g.Go(func() error {
 			tasks, err := sn.getAsyncTasks(ctx)
 			if err != nil {
-				select {
-				case errCh <- err:
-				default:
-				}
-				return
+				return err
 			}
-			select {
-			case outCh <- tasks:
-			default:
-			}
-		}(sn)
+			results[i] = tasks
+			return nil
+		})
 	}
 
-	var result []logstorage.AsyncTaskInfoWithSource
-	for i := 0; i < len(s.sns); i++ {
-		select {
-		case tasks := <-outCh:
-			result = append(result, tasks...)
-		case err := <-errCh:
-			// Cancel the context to abort outstanding requests.
-			cancel()
-			return nil, err
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
-	return result, nil
+
+	all := make([]logstorage.AsyncTaskInfoWithSource, 0, len(results))
+	for _, ts := range results {
+		all = append(all, ts...)
+	}
+	return all, nil
 }
 
 func (sn *storageNode) getAsyncTasks(ctx context.Context) ([]logstorage.AsyncTaskInfoWithSource, error) {
