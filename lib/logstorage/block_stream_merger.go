@@ -102,7 +102,6 @@ func (bsm *blockStreamMerger) reset() {
 
 	bsm.streamID.reset()
 	bsm.resetRows()
-	bsm.uniqueFields = 0
 }
 
 func (bsm *blockStreamMerger) resetRows() {
@@ -364,11 +363,7 @@ func (bsm *blockStreamMerger) processDeleteMarker(bsr *blockStreamReader, blockI
 
 	// Write the original block bytes unchanged.
 	bsm.bsw.MustWriteBlockData(&bsr.blockData)
-
-	// Obtain the new blockID assigned by the writer.
-	newID := bsm.bsw.LastBlockID()
-
-	// Accumulate delete-marker directly in writer
+	newID := bsm.bsw.lastBlockID
 	bsm.bsw.dm.AddBlock(newID, bm)
 
 	return true

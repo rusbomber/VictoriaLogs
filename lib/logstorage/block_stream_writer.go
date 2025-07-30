@@ -319,7 +319,6 @@ func (bsw *blockStreamWriter) MustInitForFilePart(path string, nocache bool) {
 	bsw.reset()
 
 	bsw.partPath = path
-
 	fs.MustMkdirFailIfExist(path)
 
 	// Open part files in parallel in order to minimze the time needed for this operation
@@ -517,7 +516,7 @@ func (bsw *blockStreamWriter) Finalize(ph *partHeader) {
 			bsw.mp.deleteMarker = bsw.dm
 		} else if bsw.partPath != "" {
 			datBuf := bsw.dm.Marshal(nil)
-			datPath := filepath.Join(bsw.partPath, rowDeleteFilename)
+			datPath := filepath.Join(bsw.partPath, deleteMarkerFilename)
 			fs.MustWriteSync(datPath, datBuf)
 		}
 	}
@@ -545,8 +544,3 @@ func putBlockStreamWriter(bsw *blockStreamWriter) {
 }
 
 var blockStreamWriterPool sync.Pool
-
-// LastBlockID returns the blockID (columnsHeaderOffset) of the last written block.
-func (bsw *blockStreamWriter) LastBlockID() uint64 {
-	return bsw.lastBlockID
-}

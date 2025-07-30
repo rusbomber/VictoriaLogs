@@ -298,7 +298,6 @@ func (bsr *blockStreamReader) reset() {
 	bsr.globalBlocksCount = 0
 
 	bsr.deleteMarker = deleteMarker{}
-
 	bsr.sidLast.reset()
 	bsr.minTimestampLast = 0
 }
@@ -314,9 +313,6 @@ func (bsr *blockStreamReader) MustInitFromInmemoryPart(mp *inmemoryPart) {
 	bsr.reset()
 
 	bsr.ph = mp.ph
-
-	// propagate delete-marker data
-	bsr.deleteMarker = deleteMarker{}
 
 	// Initialize streamReaders
 	columnNamesReader := mp.columnNames.NewReader()
@@ -340,7 +336,7 @@ func (bsr *blockStreamReader) MustInitFromInmemoryPart(mp *inmemoryPart) {
 	// Read metaindex data
 	bsr.indexBlockHeaders = mustReadIndexBlockHeaders(bsr.indexBlockHeaders[:0], &bsr.streamReaders.metaindexReader)
 
-	// Link deleteMarker directly from in-memory part
+	// Initialize delete marker
 	if len(mp.deleteMarker.blockIDs) > 0 {
 		bsr.deleteMarker = mp.deleteMarker
 	}
@@ -358,7 +354,7 @@ func (bsr *blockStreamReader) MustInitFromFilePart(path string) {
 
 	columnNamesPath := filepath.Join(path, columnNamesFilename)
 	columnIdxsPath := filepath.Join(path, columnIdxsFilename)
-	deleteRowsPath := filepath.Join(path, rowDeleteFilename)
+	deleteMarkersPath := filepath.Join(path, deleteMarkerFilename)
 	metaindexPath := filepath.Join(path, metaindexFilename)
 	indexPath := filepath.Join(path, indexFilename)
 	columnsHeaderIndexPath := filepath.Join(path, columnsHeaderIndexFilename)
@@ -387,9 +383,11 @@ func (bsr *blockStreamReader) MustInitFromFilePart(path string) {
 	pfo.Add(indexPath, &indexReader, nocache)
 
 	// Open marker readers - check if files exist first
-	var markerDatReader filestream.ReadCloser
-	if fs.IsPathExist(deleteRowsPath) {
-		pfo.Add(deleteRowsPath, &markerDatReader, nocache)
+	var deleteMarkerReader filestream.ReadCloser
+	var hasDeleteMarker bool
+	if fs.IsPathExist(deleteMarkersPath) {
+		hasDeleteMarker = true
+		pfo.Add(deleteMarkersPath, &deleteMarkerReader, nocache)
 	}
 
 	var columnsHeaderIndexReader filestream.ReadCloser
@@ -440,9 +438,9 @@ func (bsr *blockStreamReader) MustInitFromFilePart(path string) {
 	// Read metaindex data
 	bsr.indexBlockHeaders = mustReadIndexBlockHeaders(bsr.indexBlockHeaders[:0], &bsr.streamReaders.metaindexReader)
 
-	// Read marker index if available
-	if markerDatReader != nil {
-		bsr.deleteMarker = mustReadDeleteMarkerData(markerDatReader)
+	// Read delete marker if available
+	if hasDeleteMarker {
+		bsr.deleteMarker = mustReadDeleteMarkerData(deleteMarkerReader)
 	}
 }
 

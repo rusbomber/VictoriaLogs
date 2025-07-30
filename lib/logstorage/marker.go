@@ -235,7 +235,7 @@ func flushDeleteMarker(pw *partWrapper, dm *deleteMarker, seq uint64) {
 	if pw.p.path != "" {
 		datBuf := merged.Marshal(nil)
 		partPath := pw.p.path
-		datPath := filepath.Join(partPath, rowDeleteFilename)
+		datPath := filepath.Join(partPath, deleteMarkerFilename)
 		fs.MustWriteAtomic(datPath, datBuf, true /*overwrite*/)
 		fs.MustSyncPath(partPath)
 	}
