@@ -66,12 +66,10 @@ var blockSearchWorkBatchPool sync.Pool
 
 func (bswb *blockSearchWorkBatch) appendBlockSearchWork(p *part, so *searchOptions, bh *blockHeader) bool {
 	bsws := bswb.bsws
-	dm := p.deleteMarker.Load()
-
 	bsws = append(bsws, blockSearchWork{
 		p:  p,
 		so: so,
-		dm: dm,
+		dm: p.deleteMarker.Load(),
 	})
 	bsw := &bsws[len(bsws)-1]
 	bsw.bh.copyFrom(bh)
@@ -225,7 +223,8 @@ func (bs *blockSearch) search(bsw *blockSearchWork, bm *bitmap) {
 				return
 			}
 
-			// Partial delete – measure rows before/after applying the marker for investigation.
+			// Partial delete – measure rows before/after
+			// applying the marker for investigation.
 			ent.AndNotRLE(bm)
 		}
 	}
@@ -238,6 +237,7 @@ func (bs *blockSearch) search(bsw *blockSearchWork, bm *bitmap) {
 	}
 
 	bs.br.mustInit(bs, bm)
+
 	// fetch the requested columns to bs.br.
 	bs.br.initColumns(bsw.so.fieldsFilter)
 }

@@ -70,27 +70,7 @@ func (s *Storage) ListAsyncTasks() []AsyncTaskInfo {
 		a.mu.Unlock()
 
 		for _, t := range tasks {
-			tn := "*"
-			if len(t.TenantIDs) > 0 {
-				var b strings.Builder
-				for i, id := range t.TenantIDs {
-					if i > 0 {
-						b.WriteByte(',')
-					}
-					b.WriteString(id.String())
-				}
-				tn = b.String()
-			}
-			out = append(out, AsyncTaskInfo{
-				Seq:         t.Seq,
-				Type:        t.Type,
-				Status:      t.Status,
-				Tenant:      tn,
-				Payload:     t.Payload,
-				CreatedTime: t.CreatedTime,
-				DoneTime:    t.DoneTime,
-				Error:       t.ErrorMsg,
-			})
+			out = append(out, asyncTaskToInfo(t))
 		}
 	}
 
@@ -100,4 +80,28 @@ func (s *Storage) ListAsyncTasks() []AsyncTaskInfo {
 	asyncTasksCache.mu.Unlock()
 
 	return out
+}
+
+func asyncTaskToInfo(t asyncTask) AsyncTaskInfo {
+	tn := "*"
+	if len(t.TenantIDs) > 0 {
+		var b strings.Builder
+		for i, id := range t.TenantIDs {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			b.WriteString(id.String())
+		}
+		tn = b.String()
+	}
+	return AsyncTaskInfo{
+		Seq:         t.Seq,
+		Type:        t.Type,
+		Status:      t.Status,
+		Tenant:      tn,
+		Payload:     t.Payload,
+		CreatedTime: t.CreatedTime,
+		DoneTime:    t.DoneTime,
+		Error:       t.ErrorMsg,
+	}
 }

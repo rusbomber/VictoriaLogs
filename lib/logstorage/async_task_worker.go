@@ -9,11 +9,11 @@ import (
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/logger"
 )
 
-// startAsyncTaskWorker launches a background goroutine, which periodically
+// startTaskWorker launches a background goroutine, which periodically
 // scans partitions for parts lagging behind async tasks and applies these
 // tasks by re-executing their underlying queries via MarkRows (with
 // createTask=false).
-func (s *Storage) startAsyncTaskWorker() {
+func (s *Storage) startTaskWorker() {
 	const interval = 5 * time.Second
 	const maxFailure = 3
 
@@ -37,7 +37,7 @@ func (s *Storage) startAsyncTaskWorker() {
 					continue
 				}
 
-				seq, err := s.runAsyncTasksOnce(ctx)
+				seq, err := s.executeTasksOnce(ctx)
 				if err != nil {
 					logger.Errorf("async task worker: %s", err)
 					failedTime++
@@ -46,7 +46,7 @@ func (s *Storage) startAsyncTaskWorker() {
 				}
 
 				if failedTime > maxFailure {
-					s.failAsyncTask(seq, err)
+					s.setTaskFailed(seq, err)
 					failedTime = 0
 				}
 			}
@@ -54,9 +54,9 @@ func (s *Storage) startAsyncTaskWorker() {
 	}()
 }
 
-// runAsyncTasksOnce performs a single pass over all partitions (latest → oldest)
+// executeTasksOnce performs a single pass over all partitions (latest → oldest)
 // and applies pending async tasks to every part that hasn't caught up yet.
-func (s *Storage) runAsyncTasksOnce(ctx context.Context) (uint64, error) {
+func (s *Storage) executeTasksOnce(ctx context.Context) (uint64, error) {
 	var seq uint64
 
 	// Snapshot partitions (most recent first).
@@ -73,7 +73,7 @@ func (s *Storage) runAsyncTasksOnce(ctx context.Context) (uint64, error) {
 		}
 	}()
 
-	outdatedPtws, task := s.advanceNextAsyncTask(ptws)
+	outdatedPtws, task := s.findNextAsyncTask(ptws)
 	if task.Type == asyncTaskNone {
 		return 0, nil
 	}
@@ -110,14 +110,14 @@ func (s *Storage) runAsyncTasksOnce(ctx context.Context) (uint64, error) {
 		pt.ddb.partsLock.Unlock()
 	}
 
-	// If there are no lagging parts,
-	// mark the task as success and return.
+	// If there are no lagging parts and no pending parts,
+	// mark the task as successful and return.
 	if len(lagging) == 0 {
 		if pending > 0 {
 			return seq, nil
 		}
 
-		s.resolveAsyncTask(outdatedPtws, task.Seq, false, nil)
+		s.setTaskComplete(outdatedPtws, task.Seq, false, nil)
 		return seq, nil
 	}
 	defer func() {
@@ -128,7 +128,7 @@ func (s *Storage) runAsyncTasksOnce(ctx context.Context) (uint64, error) {
 
 	if task.Type == asyncTaskDelete {
 		logger.Infof("DEBUG (task): start deleting (seq=%d) on %d lagging parts (%d pending)", task.Seq, len(lagging), pending)
-		err := s.runDeleteTask(ctx, task, lagging)
+		err := s.processDeleteTask(ctx, task, lagging)
 		if err != nil {
 			return 0, fmt.Errorf("run delete task: %w", err)
 		}
@@ -139,14 +139,14 @@ func (s *Storage) runAsyncTasksOnce(ctx context.Context) (uint64, error) {
 	}
 
 	if pending == 0 {
-		s.resolveAsyncTask(outdatedPtws, task.Seq, false, nil)
+		s.setTaskComplete(outdatedPtws, task.Seq, false, nil)
 	}
 
 	logger.Infof("DEBUG (task): task (seq=%d, query=%q) applied to %d parts", task.Seq, task.Payload.Query, len(lagging))
 	return seq, nil
 }
 
-func (s *Storage) failAsyncTask(sequence uint64, err error) {
+func (s *Storage) setTaskFailed(sequence uint64, err error) {
 	if sequence == 0 || err == nil {
 		return
 	}
@@ -160,13 +160,13 @@ func (s *Storage) failAsyncTask(sequence uint64, err error) {
 	s.partitionsLock.Unlock()
 
 	// Mark the tasks as error for partitions and parts
-	s.resolveAsyncTask(ptws, sequence, true, err)
+	s.setTaskComplete(ptws, sequence, true, err)
 	for _, ptw := range ptws {
 		ptw.decRef()
 	}
 }
 
-func (s *Storage) resolveAsyncTask(ptws []*partitionWrapper, taskSeq uint64, includeParts bool, err error) {
+func (s *Storage) setTaskComplete(ptws []*partitionWrapper, taskSeq uint64, includeParts bool, err error) {
 	for _, ptw := range ptws {
 		pt := ptw.pt
 
@@ -190,7 +190,7 @@ func (s *Storage) resolveAsyncTask(ptws []*partitionWrapper, taskSeq uint64, inc
 	logger.Infof("DEBUG (task): resolveAsyncTask: taskSeq=%d, includeParts=%t, err=%v", taskSeq, includeParts, err)
 }
 
-func (s *Storage) runDeleteTask(ctx context.Context, task asyncTask, lagging []*partWrapper) error {
+func (s *Storage) processDeleteTask(ctx context.Context, task asyncTask, lagging []*partWrapper) error {
 	// Build allowed set
 	allowed := make(map[*partition][]*partWrapper, len(lagging))
 	for _, pw := range lagging {
@@ -206,7 +206,7 @@ func (s *Storage) runDeleteTask(ctx context.Context, task asyncTask, lagging []*
 	return nil
 }
 
-func (s *Storage) advanceNextAsyncTask(ptws []*partitionWrapper) ([]*partitionWrapper, asyncTask) {
+func (s *Storage) findNextAsyncTask(ptws []*partitionWrapper) ([]*partitionWrapper, asyncTask) {
 	var minSeq uint64 = math.MaxUint64
 	var result asyncTask
 	var resultPtws []*partitionWrapper

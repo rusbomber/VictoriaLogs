@@ -402,7 +402,7 @@ func MustOpenStorage(path string, cfg *StorageConfig) *Storage {
 	s.runMaxDiskSpaceUsageWatcher()
 
 	// Start background async-task reconciler
-	s.startAsyncTaskWorker()
+	s.startTaskWorker()
 
 	return s
 }

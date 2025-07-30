@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/logger"
 )
@@ -15,7 +14,6 @@ import (
 // Finalize() is guaranteed to be called on bsrs and bsw before returning from the func.
 func mustMergeBlockStreams(ph *partHeader, bsw *blockStreamWriter, bsrs []*blockStreamReader, stopCh <-chan struct{}) {
 	bsm := getBlockStreamMerger()
-	bsm.ID = time.Now().UnixNano()
 	bsm.mustInit(bsw, bsrs)
 	for len(bsm.readersHeap) > 0 {
 		if needStop(stopCh) {
@@ -50,8 +48,6 @@ func mustMergeBlockStreams(ph *partHeader, bsw *blockStreamWriter, bsrs []*block
 
 // blockStreamMerger merges block streams
 type blockStreamMerger struct {
-	ID int64
-
 	// bsw is the block stream writer to write the merged blocks.
 	bsw *blockStreamWriter
 
