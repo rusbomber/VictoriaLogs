@@ -22,7 +22,6 @@ func (s *Storage) ListAsyncTasks(ctx context.Context) ([]logstorage.AsyncTaskInf
 
 	// race-free slices
 	results := make([][]logstorage.AsyncTaskInfoWithSource, len(s.sns))
-
 	for i, sn := range s.sns {
 		i, sn := i, sn
 		g.Go(func() error {

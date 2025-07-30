@@ -20,12 +20,17 @@ type AsyncTaskInfo struct {
 	Error       string `json:"error,omitempty"`
 }
 
+// AsyncTaskInfoWithSource is AsyncTaskInfo with the source storage name.
 type AsyncTaskInfoWithSource struct {
 	AsyncTaskInfo `json:",inline"`
 	Storage       string `json:"storage"`
 }
 
-// simple cache valid for 5 seconds for the sole Storage instance
+// asyncTasksCache is a simple cache valid for 5 seconds, used only by the Storage instance.
+// It prevents GET /async_tasks from impacting the performance of all parts,
+// since the request requires acquiring the parts lock.
+// The frontend also refreshes every 5 seconds, so opening multiple tabs
+// could cause issues without this cache.
 var asyncTasksCache struct {
 	mu   sync.Mutex
 	ts   time.Time
@@ -35,69 +40,60 @@ var asyncTasksCache struct {
 // ListAsyncTasks gathers information about all async tasks known to this
 // Storage instance. The returned slice isn't sorted.
 func (s *Storage) ListAsyncTasks() []AsyncTaskInfo {
-	// Try cached value first (valid for 5 seconds)
 	asyncTasksCache.mu.Lock()
-	const duration = 5 * time.Second
-	if time.Since(asyncTasksCache.ts) < duration && asyncTasksCache.data != nil {
-		data := asyncTasksCache.data
+	const cacheTTL = 5 * time.Second
+	if time.Since(asyncTasksCache.ts) < cacheTTL && asyncTasksCache.data != nil {
+		d := append([]AsyncTaskInfo(nil), asyncTasksCache.data...)
 		asyncTasksCache.mu.Unlock()
-		return data
+		return d
 	}
 	asyncTasksCache.mu.Unlock()
 
-	var out []AsyncTaskInfo
-
 	s.partitionsLock.Lock()
-	ptws := append([]*partitionWrapper(nil), s.partitions...)
-	for _, ptw := range ptws {
-		ptw.incRef()
+	pws := append([]*partitionWrapper(nil), s.partitions...)
+	for _, pw := range pws {
+		pw.incRef()
 	}
 	s.partitionsLock.Unlock()
-
 	defer func() {
-		for _, ptw := range ptws {
-			ptw.decRef()
+		for _, p := range pws {
+			p.decRef()
 		}
 	}()
 
-	for _, ptw := range ptws {
-		ats := ptw.pt.ats
-		if ats == nil {
-			continue
-		}
+	var out []AsyncTaskInfo
+	for _, p := range pws {
+		a := p.pt.ats
 
-		ats.mu.Lock()
-		tasks := append([]asyncTask(nil), ats.ts...)
-		ats.mu.Unlock()
+		a.mu.Lock()
+		tasks := append([]asyncTask(nil), a.ts...)
+		a.mu.Unlock()
 
 		for _, t := range tasks {
-			tenantStr := "*"
+			tn := "*"
 			if len(t.TenantIDs) > 0 {
-				var sb strings.Builder
-				for i, tid := range t.TenantIDs {
+				var b strings.Builder
+				for i, id := range t.TenantIDs {
 					if i > 0 {
-						sb.WriteString(",")
+						b.WriteByte(',')
 					}
-					sb.WriteString(tid.String())
+					b.WriteString(id.String())
 				}
-				tenantStr = sb.String()
+				tn = b.String()
 			}
-
-			info := AsyncTaskInfo{
+			out = append(out, AsyncTaskInfo{
 				Seq:         t.Seq,
 				Type:        t.Type,
 				Status:      t.Status,
-				Tenant:      tenantStr,
+				Tenant:      tn,
 				Payload:     t.Payload,
 				CreatedTime: t.CreatedTime,
 				DoneTime:    t.DoneTime,
 				Error:       t.ErrorMsg,
-			}
-			out = append(out, info)
+			})
 		}
 	}
 
-	// Store in cache
 	asyncTasksCache.mu.Lock()
 	asyncTasksCache.ts = time.Now()
 	asyncTasksCache.data = out

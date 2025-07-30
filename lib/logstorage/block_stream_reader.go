@@ -327,7 +327,7 @@ func (bsr *blockStreamReader) MustInitFromInmemoryPart(mp *inmemoryPart) {
 	columnsHeaderReader := mp.columnsHeader.NewReader()
 	timestampsReader := mp.timestamps.NewReader()
 
-	messageBloomValuesReader := mp.fieldBloomValues.NewStreamReader()
+	messageBloomValuesReader := mp.messageBloomValues.NewStreamReader()
 	var oldBloomValuesReader bloomValuesStreamReader
 	bloomValuesShards := []bloomValuesStreamReader{
 		mp.fieldBloomValues.NewStreamReader(),

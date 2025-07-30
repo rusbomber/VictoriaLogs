@@ -108,11 +108,11 @@ func (at *asyncTasks) resolve(seq uint64, err error) {
 }
 
 // addDeleteTask appends a delete task to the partition's task list
-func (at *asyncTasks) addDeleteTaskSync(tenantIDs []TenantID, q *Query, seq uint64) uint64 {
+func (at *asyncTasks) addDeletion(tenantIDs []TenantID, q *Query, seq uint64) uint64 {
 	task := asyncTask{
 		Seq:         seq,
 		Type:        asyncTaskDelete,
-		TenantIDs:   append([]TenantID(nil), tenantIDs...),
+		TenantIDs:   tenantIDs,
 		Payload:     asyncDeletePayload{Query: q.String()},
 		Status:      taskPending,
 		CreatedTime: time.Now().UnixNano(),

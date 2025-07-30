@@ -17,26 +17,23 @@ func (s *Storage) startAsyncTaskWorker() {
 	const interval = 5 * time.Second
 	const maxFailure = 3
 
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-s.stopCh
+		cancel()
+	}()
+
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		ctx := context.Background()
-
-		timer := time.NewTimer(interval)
-		defer timer.Stop()
 
 		for failedTime := 0; ; {
 			select {
 			case <-s.stopCh:
-				// Drain the timer channel if needed before returning
-				if !timer.Stop() {
-					<-timer.C
-				}
 				return
-			case <-timer.C:
+			case <-time.After(interval):
 				// Honour pause requests, if any. If cannot process, just reset timer and continue.
-				if !s.asyncTaskState.isPaused() {
-					timer.Reset(interval)
+				if s.asyncTaskState.isPaused() {
 					continue
 				}
 
@@ -52,9 +49,6 @@ func (s *Storage) startAsyncTaskWorker() {
 					s.failAsyncTask(seq, err)
 					failedTime = 0
 				}
-
-				// Start the 5-second wait *after* the task completes
-				timer.Reset(interval)
 			}
 		}
 	}()
@@ -79,7 +73,7 @@ func (s *Storage) runAsyncTasksOnce(ctx context.Context) (uint64, error) {
 		}
 	}()
 
-	oudatedPtws, task := s.advanceNextAsyncTask(ptws)
+	outdatedPtws, task := s.advanceNextAsyncTask(ptws)
 	if task.Type == asyncTaskNone {
 		return 0, nil
 	}
@@ -88,10 +82,9 @@ func (s *Storage) runAsyncTasksOnce(ctx context.Context) (uint64, error) {
 	seq = task.Seq
 
 	// Gather all lagging parts in the target partition for this sequence.
-	var lagging []*partWrapper
-	var pendingPws []*partWrapper
+	lagging := []*partWrapper{}
 	pending := 0
-	for _, ptw := range oudatedPtws {
+	for _, ptw := range outdatedPtws {
 		pt := ptw.pt
 		pt.ddb.partsLock.Lock()
 		allPws := [][]*partWrapper{pt.ddb.inmemoryParts, pt.ddb.smallParts, pt.ddb.bigParts}
@@ -103,7 +96,6 @@ func (s *Storage) runAsyncTasksOnce(ctx context.Context) (uint64, error) {
 
 				if pw.isInMerge {
 					pending++
-					pendingPws = append(pendingPws, pw)
 					continue
 				}
 
@@ -122,14 +114,10 @@ func (s *Storage) runAsyncTasksOnce(ctx context.Context) (uint64, error) {
 	// mark the task as success and return.
 	if len(lagging) == 0 {
 		if pending > 0 {
-			logger.Infof("DEBUG (task): no lagging parts, but there are pending parts (pending=%d), waiting for them to finish", pending)
-			for _, pw := range pendingPws {
-				fmt.Println("DEBUG (task): pending part", pw.p.path, pw.taskSeq.Load())
-			}
 			return seq, nil
 		}
 
-		s.resolveAsyncTask(oudatedPtws, task.Seq, false, nil)
+		s.resolveAsyncTask(outdatedPtws, task.Seq, false, nil)
 		return seq, nil
 	}
 	defer func() {
@@ -151,7 +139,7 @@ func (s *Storage) runAsyncTasksOnce(ctx context.Context) (uint64, error) {
 	}
 
 	if pending == 0 {
-		s.resolveAsyncTask(oudatedPtws, task.Seq, false, nil)
+		s.resolveAsyncTask(outdatedPtws, task.Seq, false, nil)
 	}
 
 	logger.Infof("DEBUG (task): task (seq=%d, query=%q) applied to %d parts", task.Seq, task.Payload.Query, len(lagging))
@@ -215,7 +203,7 @@ func (s *Storage) runDeleteTask(ctx context.Context, task asyncTask, lagging []*
 		return fmt.Errorf("failed to mark delete rows on parts: %w", err)
 	}
 
-	return err
+	return nil
 }
 
 func (s *Storage) advanceNextAsyncTask(ptws []*partitionWrapper) ([]*partitionWrapper, asyncTask) {

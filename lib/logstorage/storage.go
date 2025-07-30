@@ -863,7 +863,7 @@ func (s *Storage) DeleteRows(ctx context.Context, tenantIDs []TenantID, q *Query
 	s.partitionsLock.Unlock()
 
 	for _, ptw := range ptws {
-		ptw.pt.ats.addDeleteTaskSync(tenantIDs, q, seq)
+		ptw.pt.ats.addDeletion(tenantIDs, q, seq)
 	}
 
 	return nil

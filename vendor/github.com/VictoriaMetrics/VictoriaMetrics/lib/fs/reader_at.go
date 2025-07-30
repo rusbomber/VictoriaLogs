@@ -195,11 +195,21 @@ func newMmapReaderFromFile(f *os.File) *mmapReader {
 		size := fi.Size()
 		data, err := mmapFile(f, size)
 		if err != nil {
-			path := f.Name()
-			MustClose(f)
-			logger.Panicf("FATAL: cannot mmap %q: %s", path, err)
+			// Fallback: log the error and continue without mmap, switching to pread() for future files.
+			// This prevents hard panics when the process hits the OS limit on the number of memory-mapped files
+			// (vm.max_map_count) or when the kernel cannot allocate the required virtual memory area.
+			// See https://github.com/VictoriaMetrics/VictoriaMetrics/issues/ for related discussions.
+
+			logger.Warnf("cannot mmap %q: %s; falling back to pread() and disabling mmap for subsequent files", f.Name(), err)
+
+			// Disable mmap globally so that next files are opened directly with pread().
+			// This is safe to run concurrently, since it simply sets the flag to true.
+			*disableMmap = true
+
+			// Continue with mmapData left empty, so the caller will use f.ReadAt().
+		} else {
+			mmapData = data
 		}
-		mmapData = data
 	}
 	readersCount.Inc()
 	return &mmapReader{
