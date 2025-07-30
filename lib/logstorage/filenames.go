@@ -18,11 +18,11 @@ const (
 	// Filename for per-row marker data (e.g. delete markers).
 	deleteMarkerFilename = "deleted_rows.bin"
 
-	// Filename for async tasks storage at partition level.
-	asyncTasksFilename = "async_tasks.json"
-
 	metadataFilename = "metadata.json"
 	partsFilename    = "parts.json"
+
+	// Filename for async tasks storage at partition level.
+	asyncTasksFilename = "async_tasks.json"
 
 	indexdbDirname    = "indexdb"
 	datadbDirname     = "datadb"

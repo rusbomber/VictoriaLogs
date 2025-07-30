@@ -299,7 +299,7 @@ func (rle boolRLE) IsSubsetOf(other boolRLE) bool {
 			span = b.rem
 		}
 
-		// If this span has 1s in a and 0s in b → violation.
+		// If this span has 1s in a and 0s in b -> violation.
 		if a.ones && !b.ones && span > 0 {
 			return false
 		}
@@ -461,70 +461,4 @@ func (rle boolRLE) Union(other boolRLE) boolRLE {
 		dst = encoding.MarshalVarUint64(dst, rl)
 	}
 	return dst
-}
-
-// CountOnes returns the total number of 1‑bits encoded in the RLE stream.
-func (rle boolRLE) CountOnes() uint64 {
-	if len(rle) == 0 {
-		return 0
-	}
-
-	var (
-		idx   int    // read offset in rle
-		ones  bool   // current run type; false = zeros, true = ones
-		total uint64 // accumulated 1‑bits
-	)
-
-	for idx < len(rle) {
-		run, n := encoding.UnmarshalVarUint64(rle[idx:])
-		idx += n
-		if run == 0 { // explicit run‑type flip, no bits to count
-			ones = !ones
-			continue
-		}
-		if ones {
-			total += run
-		}
-		ones = !ones
-	}
-
-	return total
-}
-
-// ForEachZeroBit calls f(idx) for every bit that is 0 (i.e. not set) in the RLE-encoded bitmap.
-// It iterates in ascending order of idx and never allocates.
-// totalRows must be the number of rows the bitmap applies to – this is needed
-// to iterate possible trailing zeros when the RLE stream ends earlier.
-func (rle boolRLE) ForEachZeroBit(totalRows int, f func(idx int)) {
-	if totalRows <= 0 {
-		return
-	}
-
-	pos := 0 // current row index
-	idx := 0 // byte offset inside rle
-
-	for pos < totalRows && idx < len(rle) {
-		// zeros-run length
-		zeros, n := encoding.UnmarshalVarUint64(rle[idx:])
-		idx += n
-		for i := 0; i < int(zeros) && pos < totalRows; i++ {
-			f(pos)
-			pos++
-		}
-
-		if pos >= totalRows || idx >= len(rle) {
-			break
-		}
-
-		// ones-run length – skip these rows
-		ones, n := encoding.UnmarshalVarUint64(rle[idx:])
-		idx += n
-		pos += int(ones)
-	}
-
-	// Handle tail zeros if any rows left after RLE stream.
-	for pos < totalRows {
-		f(pos)
-		pos++
-	}
 }

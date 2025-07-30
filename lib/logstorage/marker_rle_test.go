@@ -249,6 +249,34 @@ func TestBoolRLEIsSubsetOf(t *testing.T) {
 		true)
 }
 
+// CountOnes returns the total number of 1‑bits encoded in the RLE stream.
+func (rle boolRLE) CountOnes() uint64 {
+	if len(rle) == 0 {
+		return 0
+	}
+
+	var (
+		idx   int    // read offset in rle
+		ones  bool   // current run type; false = zeros, true = ones
+		total uint64 // accumulated 1‑bits
+	)
+
+	for idx < len(rle) {
+		run, n := encoding.UnmarshalVarUint64(rle[idx:])
+		idx += n
+		if run == 0 { // explicit run‑type flip, no bits to count
+			ones = !ones
+			continue
+		}
+		if ones {
+			total += run
+		}
+		ones = !ones
+	}
+
+	return total
+}
+
 func TestBoolRLECountOnes(t *testing.T) {
 	f := func(runs []uint64, expected uint64) {
 		t.Helper()

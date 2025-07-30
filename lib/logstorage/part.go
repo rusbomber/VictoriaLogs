@@ -105,7 +105,7 @@ func mustOpenInmemoryPart(pt *partition, mp *inmemoryPart) *part {
 		},
 	}
 
-	p.deleteMarker.Store(nil)
+	p.deleteMarker.Store(&mp.deleteMarker)
 
 	return &p
 }
@@ -118,7 +118,7 @@ func mustOpenFilePart(pt *partition, path string) *part {
 
 	columnNamesPath := filepath.Join(path, columnNamesFilename)
 	columnIdxsPath := filepath.Join(path, columnIdxsFilename)
-	markerDatPath := filepath.Join(path, deleteMarkerFilename)
+	deleteMarkerPath := filepath.Join(path, deleteMarkerFilename)
 	metaindexPath := filepath.Join(path, metaindexFilename)
 	indexPath := filepath.Join(path, indexFilename)
 	columnsHeaderIndexPath := filepath.Join(path, columnsHeaderIndexFilename)
@@ -180,11 +180,11 @@ func mustOpenFilePart(pt *partition, path string) *part {
 
 	// Load marker data
 	p.deleteMarker.Store(nil)
-	if fs.IsPathExist(markerDatPath) {
-		markerDatReader := filestream.MustOpen(markerDatPath, true)
-		deleteMarker := mustReadDeleteMarkerData(markerDatReader)
+	if fs.IsPathExist(deleteMarkerPath) {
+		deleteMarkerReader := filestream.MustOpen(deleteMarkerPath, true)
+		deleteMarker := mustReadDeleteMarkerData(deleteMarkerReader)
 		p.deleteMarker.Store(&deleteMarker)
-		markerDatReader.MustClose()
+		deleteMarkerReader.MustClose()
 	}
 
 	return &p

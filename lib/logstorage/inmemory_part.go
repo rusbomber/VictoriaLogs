@@ -5,6 +5,8 @@ import (
 	"sort"
 	"sync"
 
+	"io"
+
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/chunkedbuffer"
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/filestream"
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/fs"
@@ -27,6 +29,20 @@ type inmemoryPart struct {
 	fieldBloomValues   bloomValuesBuffer
 
 	deleteMarker deleteMarker
+}
+
+// deleteMarkerWriter implements io.WriterTo for writing delete marker data
+type deleteMarkerWriter struct {
+	dm *deleteMarker
+}
+
+func (dmw *deleteMarkerWriter) WriteTo(w io.Writer) (int64, error) {
+	if len(dmw.dm.blockIDs) == 0 {
+		return 0, nil
+	}
+	data := dmw.dm.Marshal(nil)
+	n, err := w.Write(data)
+	return int64(n), err
 }
 
 type bloomValuesBuffer struct {
@@ -138,11 +154,11 @@ func (mp *inmemoryPart) MustStoreToDisk(path string) {
 	psw.Add(messageBloomFilterPath, &mp.messageBloomValues.bloom)
 	psw.Add(messageValuesPath, &mp.messageBloomValues.values)
 
-	// Persist delete-marker data if present.
+	// Persist delete-marker data if present using ParallelStreamWriter
 	if len(mp.deleteMarker.blockIDs) > 0 {
-		datBuf := mp.deleteMarker.Marshal(nil)
-		datPath := filepath.Join(path, deleteMarkerFilename)
-		fs.MustWriteSync(datPath, datBuf)
+		deleteMarkerPath := filepath.Join(path, deleteMarkerFilename)
+		dmw := &deleteMarkerWriter{dm: &mp.deleteMarker}
+		psw.Add(deleteMarkerPath, dmw)
 	}
 
 	bloomPath := getBloomFilePath(path, 0)
