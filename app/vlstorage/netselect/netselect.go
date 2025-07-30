@@ -495,6 +495,25 @@ func unmarshalValuesWithHits(src []byte) ([]logstorage.ValueWithHits, error) {
 	return vhs, nil
 }
 
+// DeleteRows propagates delete markers to all storage nodes.
+func (s *Storage) DeleteRows(ctx context.Context, tenantIDs []logstorage.TenantID, q *logstorage.Query) error {
+	var wg sync.WaitGroup
+	errs := make([]error, len(s.sns))
+	for i, sn := range s.sns {
+		i, sn := i, sn
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := sn.deleteRows(ctx, tenantIDs, q); err != nil {
+				errs[i] = fmt.Errorf("storage node %s: %w", sn.addr, err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	return errors.Join(errs...)
+}
+
 func (sn *storageNode) deleteRows(ctx context.Context, tenantIDs []logstorage.TenantID, q *logstorage.Query) error {
 	args := sn.getCommonArgs(DeleteProtocolVersion, tenantIDs, q)
 
@@ -514,29 +533,6 @@ func (sn *storageNode) deleteRows(ctx context.Context, tenantIDs []logstorage.Te
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("unexpected status code for request to %q: %d; response: %q", reqURL, resp.StatusCode, body)
-	}
-	return nil
-}
-
-// DeleteRows propagates delete markers to all storage nodes.
-func (s *Storage) DeleteRows(ctx context.Context, tenantIDs []logstorage.TenantID, q *logstorage.Query) error {
-	var wg sync.WaitGroup
-	errCh := make(chan error, len(s.sns))
-	for _, sn := range s.sns {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if err := sn.deleteRows(ctx, tenantIDs, q); err != nil {
-				errCh <- err
-			}
-		}()
-	}
-	wg.Wait()
-	close(errCh)
-	for err := range errCh {
-		if err != nil {
-			return err
-		}
 	}
 	return nil
 }

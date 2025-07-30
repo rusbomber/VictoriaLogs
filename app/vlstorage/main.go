@@ -430,6 +430,7 @@ func DeleteRows(ctx context.Context, tenantIDs []logstorage.TenantID, q *logstor
 	return netstorageSelect.DeleteRows(ctx, tenantIDs, q)
 }
 
+// IsLocalStorage confirms whether the running instance is a storage node.
 func IsLocalStorage() bool {
 	return localStorage != nil
 }
@@ -443,7 +444,6 @@ func ListAsyncTasks(ctx context.Context) ([]logstorage.AsyncTaskInfoWithSource, 
 		for i, t := range tasks {
 			out[i] = logstorage.AsyncTaskInfoWithSource{
 				AsyncTaskInfo: t,
-				Storage:       "local",
 			}
 		}
 		return out, nil

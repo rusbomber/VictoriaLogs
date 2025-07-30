@@ -129,7 +129,7 @@ func (s *Storage) runAsyncTasksOnce(ctx context.Context) (uint64, error) {
 			return seq, nil
 		}
 
-		s.setTaskAsDone(oudatedPtws, task.Seq, taskSuccess, false, nil)
+		s.resolveAsyncTask(oudatedPtws, task.Seq, false, nil)
 		return seq, nil
 	}
 	defer func() {
@@ -151,7 +151,7 @@ func (s *Storage) runAsyncTasksOnce(ctx context.Context) (uint64, error) {
 	}
 
 	if pending == 0 {
-		s.setTaskAsDone(oudatedPtws, task.Seq, taskSuccess, false, nil)
+		s.resolveAsyncTask(oudatedPtws, task.Seq, false, nil)
 	}
 
 	logger.Infof("DEBUG (task): task (seq=%d, query=%q) applied to %d parts", task.Seq, task.Payload.Query, len(lagging))
@@ -172,13 +172,13 @@ func (s *Storage) failAsyncTask(sequence uint64, err error) {
 	s.partitionsLock.Unlock()
 
 	// Mark the tasks as error for partitions and parts
-	s.setTaskAsDone(ptws, sequence, taskError, true, err)
+	s.resolveAsyncTask(ptws, sequence, true, err)
 	for _, ptw := range ptws {
 		ptw.decRef()
 	}
 }
 
-func (s *Storage) setTaskAsDone(ptws []*partitionWrapper, taskSeq uint64, ats asyncTaskStatus, includeParts bool, err error) {
+func (s *Storage) resolveAsyncTask(ptws []*partitionWrapper, taskSeq uint64, includeParts bool, err error) {
 	for _, ptw := range ptws {
 		pt := ptw.pt
 
@@ -196,10 +196,10 @@ func (s *Storage) setTaskAsDone(ptws []*partitionWrapper, taskSeq uint64, ats as
 			pt.ddb.partsLock.Unlock()
 		}
 
-		pt.ats.markResolvedSync(taskSeq, ats, err)
+		pt.ats.resolve(taskSeq, err)
 	}
 
-	logger.Infof("DEBUG (task): setTaskAsDone: taskSeq=%d, ats=%s, includeParts=%t", taskSeq, ats, includeParts)
+	logger.Infof("DEBUG (task): resolveAsyncTask: taskSeq=%d, includeParts=%t, err=%v", taskSeq, includeParts, err)
 }
 
 func (s *Storage) runDeleteTask(ctx context.Context, task asyncTask, lagging []*partWrapper) error {
@@ -226,7 +226,7 @@ func (s *Storage) advanceNextAsyncTask(ptws []*partitionWrapper) ([]*partitionWr
 	for _, ptw := range ptws {
 		pt := ptw.pt
 
-		task := pt.ats.updatePending()
+		task := pt.ats.nextPendingTask()
 		if task.Type == asyncTaskNone || task.Seq > minSeq {
 			continue
 		}

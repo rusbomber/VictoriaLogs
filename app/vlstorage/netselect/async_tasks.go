@@ -19,6 +19,8 @@ func (s *Storage) ListAsyncTasks(ctx context.Context) ([]logstorage.AsyncTaskInf
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
+
+	// race-free slices
 	results := make([][]logstorage.AsyncTaskInfoWithSource, len(s.sns))
 
 	for i, sn := range s.sns {
@@ -37,7 +39,7 @@ func (s *Storage) ListAsyncTasks(ctx context.Context) ([]logstorage.AsyncTaskInf
 		return nil, err
 	}
 
-	all := make([]logstorage.AsyncTaskInfoWithSource, 0, len(results))
+	var all []logstorage.AsyncTaskInfoWithSource
 	for _, ts := range results {
 		all = append(all, ts...)
 	}
@@ -63,7 +65,6 @@ func (sn *storageNode) getAsyncTasks(ctx context.Context) ([]logstorage.AsyncTas
 	}
 	defer resp.Body.Close()
 
-	// Read the entire response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read response body from %q: %w", reqURL, err)

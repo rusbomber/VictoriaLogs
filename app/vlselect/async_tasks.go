@@ -154,16 +154,13 @@ func processAsyncTasksRequest(ctx context.Context, w http.ResponseWriter, r *htt
 		}
 	}
 
-	// Check if we should show storage column (if any storage is not "local")
-	showStorage := !vlstorage.IsLocalStorage()
-
 	vm := struct {
 		Tasks       []row
 		ShowTenant  bool
 		ShowStorage bool
 	}{
 		ShowTenant:  showTenant,
-		ShowStorage: showStorage,
+		ShowStorage: !vlstorage.IsLocalStorage(),
 	}
 
 	for _, t := range tasks {

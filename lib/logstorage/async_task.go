@@ -26,6 +26,11 @@ const (
 	taskError   asyncTaskStatus = "error"
 )
 
+// asyncDeletePayload contains arguments for async delete tasks.
+type asyncDeletePayload struct {
+	Query string `json:"query,omitempty"`
+}
+
 type asyncTask struct {
 	Type        asyncTaskType      `json:"type"`                  // task type (delete, etc.)
 	TenantIDs   []TenantID         `json:"tenantIDs,omitempty"`   // affected tenants
@@ -37,18 +42,12 @@ type asyncTask struct {
 	ErrorMsg    string             `json:"error,omitempty"`       // last error message
 }
 
-// asyncDeletePayload contains parameters for async tasks.
-// For now it only includes LogSQL query for delete tasks.
-type asyncDeletePayload struct {
-	Query string `json:"query,omitempty"`
-}
-
 type asyncTasks struct {
-	pt *partition
+	pt *partition // parent partition that owns these async tasks
 
 	mu  sync.Mutex
-	ts  []asyncTask
-	seq atomic.Uint64
+	ts  []asyncTask   // list of async tasks for this partition
+	seq atomic.Uint64 // sequence number for tracking task progress
 }
 
 func newAsyncTasks(pt *partition, tasks []asyncTask) *asyncTasks {
@@ -59,7 +58,7 @@ func newAsyncTasks(pt *partition, tasks []asyncTask) *asyncTasks {
 	return ast
 }
 
-func (at *asyncTasks) updatePending() asyncTask {
+func (at *asyncTasks) nextPendingTask() asyncTask {
 	var result asyncTask
 
 	at.mu.Lock()
@@ -76,42 +75,36 @@ func (at *asyncTasks) updatePending() asyncTask {
 	return result
 }
 
-// unmarshalAsyncTasks converts JSON data back to async tasks
-func unmarshalAsyncTasks(data []byte) ([]asyncTask, error) {
-	if len(data) == 0 {
-		return nil, nil
-	}
-
-	var tasks []asyncTask
-	if err := json.Unmarshal(data, &tasks); err != nil {
-		return nil, fmt.Errorf("unmarshal async tasks: %w", err)
-	}
-	return tasks, nil
-}
-
-// markResolvedSync updates task status and persists the change to disk.
+// resolve updates task status and persists the change to disk.
 // It holds the internal mutex only for in‐memory modification; the slow fs write
 // is executed after the lock is released to avoid blocking other readers.
-func (at *asyncTasks) markResolvedSync(seq uint64, status asyncTaskStatus, err error) {
-	var updated bool
+func (at *asyncTasks) resolve(seq uint64, err error) {
+	status, errMsg := taskSuccess, ""
+	if err != nil {
+		status, errMsg = taskError, err.Error()
+	}
 
 	at.mu.Lock()
-	for i := len(at.ts) - 1; i >= 0; i-- {
-		if at.ts[i].Seq == seq && at.ts[i].Status == taskPending {
-			at.ts[i].Status = status
-			at.ts[i].DoneTime = time.Now().UnixNano()
-			if status == taskError && err != nil {
-				at.ts[i].ErrorMsg = err.Error()
-			}
-			updated = true
-			break
+	for i := range at.ts {
+		t := &at.ts[i]
+
+		if t.Seq < seq {
+			continue
 		}
+		if t.Seq > seq || t.Status != taskPending {
+			at.mu.Unlock()
+			return // no matching pending task
+		}
+
+		t.Status = status
+		t.DoneTime = time.Now().UnixNano()
+		t.ErrorMsg = errMsg
+		at.mu.Unlock()
+
+		at.pt.mustSaveAsyncTasks()
+		return
 	}
 	at.mu.Unlock()
-
-	if updated {
-		at.pt.mustSaveAsyncTasks()
-	}
 }
 
 // addDeleteTask appends a delete task to the partition's task list
@@ -131,4 +124,17 @@ func (at *asyncTasks) addDeleteTaskSync(tenantIDs []TenantID, q *Query, seq uint
 
 	at.pt.mustSaveAsyncTasks()
 	return seq
+}
+
+// unmarshalAsyncTasks converts JSON data back to async tasks
+func unmarshalAsyncTasks(data []byte) ([]asyncTask, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+
+	var tasks []asyncTask
+	if err := json.Unmarshal(data, &tasks); err != nil {
+		return nil, fmt.Errorf("unmarshal async tasks: %w", err)
+	}
+	return tasks, nil
 }
