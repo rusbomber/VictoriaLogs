@@ -864,8 +864,8 @@ func (s *Storage) DeleteRows(ctx context.Context, tenantIDs []TenantID, q *Query
 
 	for _, ptw := range ptws {
 		ptw.pt.ats.addDeletion(tenantIDs, q, seq)
+		ptw.decRef()
 	}
-
 	return nil
 }
 
