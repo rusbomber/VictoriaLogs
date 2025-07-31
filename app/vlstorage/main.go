@@ -2,10 +2,12 @@ package vlstorage
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/flagutil"
@@ -212,6 +214,10 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 		return processForceMerge(w, r)
 	case "/internal/force_flush":
 		return processForceFlush(w, r)
+	case "/internal/async_tasks":
+		return processAsyncTasks(w, r)
+	case "/internal/delete":
+		return processInternalDelete(w, r)
 	}
 	return false
 }
@@ -251,6 +257,66 @@ func processForceFlush(w http.ResponseWriter, r *http.Request) bool {
 
 	logger.Infof("flushing storage to make pending data available for reading")
 	localStorage.DebugFlush()
+	return true
+}
+
+func processAsyncTasks(w http.ResponseWriter, r *http.Request) bool {
+	version := r.FormValue("version")
+	if version != netselect.AsyncTasksProtocolVersion {
+		httpserver.Errorf(w, r, "unsupported protocol version=%q; want %q", version, netselect.AsyncTasksProtocolVersion)
+		return true
+	}
+
+	tasks, err := ListAsyncTasks(r.Context())
+	if err != nil {
+		httpserver.Errorf(w, r, "cannot list async tasks: %s", err)
+		return true
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(tasks); err != nil {
+		httpserver.Errorf(w, r, "internal error: %s", err)
+	}
+	return true
+}
+
+func processInternalDelete(w http.ResponseWriter, r *http.Request) bool {
+	if localStorage == nil {
+		return false // only in local mode
+	}
+
+	// Parse tenant IDs
+	tenantIDsStr := r.FormValue("tenant_ids")
+	tenantIDs, err := logstorage.UnmarshalTenantIDs([]byte(tenantIDsStr))
+	if err != nil {
+		httpserver.Errorf(w, r, "cannot unmarshal tenant_ids=%q: %s", tenantIDsStr, err)
+		return true
+	}
+
+	// Parse timestamp
+	timestampStr := r.FormValue("timestamp")
+	timestamp, err := strconv.ParseInt(timestampStr, 10, 64)
+	if err != nil {
+		httpserver.Errorf(w, r, "cannot parse timestamp=%q: %s", timestampStr, err)
+		return true
+	}
+
+	// Parse query
+	qStr := r.FormValue("query")
+	q, err := logstorage.ParseQueryAtTimestamp(qStr, timestamp)
+	if err != nil {
+		httpserver.Errorf(w, r, "cannot parse query=%q: %s", qStr, err)
+		return true
+	}
+
+	// Execute delete
+	if err := DeleteRows(r.Context(), tenantIDs, q); err != nil {
+		httpserver.Errorf(w, r, "cannot delete rows: %s", err)
+		return true
+	}
+
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(http.StatusOK)
 	return true
 }
 
@@ -349,6 +415,41 @@ func GetStreamIDs(ctx context.Context, tenantIDs []logstorage.TenantID, q *logst
 		return localStorage.GetStreamIDs(ctx, tenantIDs, q, limit)
 	}
 	return netstorageSelect.GetStreamIDs(ctx, tenantIDs, q, limit)
+}
+
+// DeleteRows marks rows matching q with the Deleted marker (full or partial) and flushes markers to disk immediately.
+func DeleteRows(ctx context.Context, tenantIDs []logstorage.TenantID, q *logstorage.Query) error {
+	if err := logstorage.ValidateDeleteQuery(q); err != nil {
+		return fmt.Errorf("validate query: %w", err)
+	}
+
+	if localStorage != nil {
+		return localStorage.DeleteRows(ctx, tenantIDs, q)
+	}
+
+	return netstorageSelect.DeleteRows(ctx, tenantIDs, q)
+}
+
+// IsLocalStorage confirms whether the running instance is a storage node.
+func IsLocalStorage() bool {
+	return localStorage != nil
+}
+
+// ListAsyncTasks collects async tasks information either from the local storage or from all configured storage nodes.
+// It returns slice with the tasks and an extra Storage field indicating the source node address (or "local" for the embedded storage).
+func ListAsyncTasks(ctx context.Context) ([]logstorage.AsyncTaskInfoWithSource, error) {
+	if localStorage != nil {
+		tasks := localStorage.ListAsyncTasks()
+		out := make([]logstorage.AsyncTaskInfoWithSource, len(tasks))
+		for i, t := range tasks {
+			out[i] = logstorage.AsyncTaskInfoWithSource{
+				AsyncTaskInfo: t,
+			}
+		}
+		return out, nil
+	}
+
+	return netstorageSelect.ListAsyncTasks(ctx)
 }
 
 func writeStorageMetrics(w io.Writer, strg *logstorage.Storage) {

@@ -60,6 +60,14 @@ const (
 	//
 	// It must be updated every time the protocol changes.
 	QueryProtocolVersion = "v1"
+
+	// DeleteProtocolVersion is the version of the protocol used for /internal/delete HTTP endpoint.
+	// It must be updated every time the protocol changes.
+	DeleteProtocolVersion = "v1"
+
+	// AsyncTasksProtocolVersion is the version of the protocol used for /internal/async_tasks endpoint when querying JSON format.
+	// Bump this when behavioural changes are introduced.
+	AsyncTasksProtocolVersion = "v1"
 )
 
 // Storage is a network storage for querying remote storage nodes in the cluster.
@@ -485,4 +493,46 @@ func unmarshalValuesWithHits(src []byte) ([]logstorage.ValueWithHits, error) {
 	}
 
 	return vhs, nil
+}
+
+// DeleteRows propagates delete markers to all storage nodes.
+func (s *Storage) DeleteRows(ctx context.Context, tenantIDs []logstorage.TenantID, q *logstorage.Query) error {
+	var wg sync.WaitGroup
+	errs := make([]error, len(s.sns))
+	for i, sn := range s.sns {
+		i, sn := i, sn
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := sn.deleteRows(ctx, tenantIDs, q); err != nil {
+				errs[i] = fmt.Errorf("storage node %s: %w", sn.addr, err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	return errors.Join(errs...)
+}
+
+func (sn *storageNode) deleteRows(ctx context.Context, tenantIDs []logstorage.TenantID, q *logstorage.Query) error {
+	args := sn.getCommonArgs(DeleteProtocolVersion, tenantIDs, q)
+
+	reqURL := sn.getRequestURL("/internal/delete", args)
+	req, err := http.NewRequestWithContext(ctx, "POST", reqURL, nil)
+	if err != nil {
+		return err
+	}
+	if err := sn.ac.SetHeaders(req, true); err != nil {
+		return fmt.Errorf("cannot set auth headers for %q: %w", reqURL, err)
+	}
+	resp, err := sn.c.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("unexpected status code for request to %q: %d; response: %q", reqURL, resp.StatusCode, body)
+	}
+	return nil
 }

@@ -84,6 +84,7 @@ func requestHandler(w http.ResponseWriter, r *http.Request) bool {
 		fmt.Fprintf(w, "Useful endpoints:</br>")
 		httpserver.WriteAPIHelp(w, [][2]string{
 			{"select/vmui", "Web UI for VictoriaLogs"},
+			{"select/async_tasks", "async tasks"},
 			{"metrics", "available service metrics"},
 			{"flags", "command-line flags"},
 		})
