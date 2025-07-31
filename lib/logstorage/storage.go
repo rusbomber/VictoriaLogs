@@ -830,7 +830,6 @@ func ValidateDeleteQuery(q *Query) error {
 	// vlstorage parses the time by adding +0.999, so we need to use now+1 to avoid
 	// duplicating the addition of _time filters.
 	if maxTS > now+int64(time.Second) {
-		logger.Infof("DEBUG: maxTS=%d > now=%d, adjusting maxTS to now", maxTS, now)
 		q.AddTimeFilter(minTS, now)
 	}
 
