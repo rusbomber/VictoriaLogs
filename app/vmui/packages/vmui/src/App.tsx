@@ -30,13 +30,13 @@ const App: FC = () => {
                 <Route
                   path={router.rules}
                   element={<ExploreRules
-                    ruleTypeFilter=""
+                    typeFilter=""
                   />}
                 />
                 <Route
                   path={router.alerts}
                   element={<ExploreRules
-                    ruleTypeFilter="alert"
+                    typeFilter="alert"
                   />}
                 />
                 <Route

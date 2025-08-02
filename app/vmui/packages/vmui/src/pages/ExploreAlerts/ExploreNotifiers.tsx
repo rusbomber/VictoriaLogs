@@ -14,13 +14,19 @@ import { getQueryStringValue } from "../../utils/query-string";
 import { getChanges } from "./helpers";
 
 const defaultKindsStr = getQueryStringValue("kinds", "") as string;
-const defaultKinds = defaultKindsStr.split("&").filter(rt => rt) as string[];
+const defaultKinds = defaultKindsStr.split("&").filter((rt) => rt) as string[];
 const defaultSearchInput = getQueryStringValue("search", "") as string;
 
 const ExploreNotifiers: FC = () => {
-  const { notifiers, isLoading: loadingNotifiers, error: errorNotifiers } = useFetchNotifiers();
+  const {
+    notifiers,
+    isLoading: loadingNotifiers,
+    error: errorNotifiers,
+  } = useFetchNotifiers();
 
-  const [expandNotifiers, setExpandNotifiers] = useState<Set<string>>(new Set<string>());
+  const [expandNotifiers, setExpandNotifiers] = useState<Set<string>>(
+    new Set<string>(),
+  );
   const [searchInput, setSearchInput] = useState(defaultSearchInput);
   const [kinds, setKinds] = useState(defaultKinds);
 
@@ -46,7 +52,7 @@ const ExploreNotifiers: FC = () => {
     if (!target) return;
 
     let parent = target.closest("details");
-    while(parent) {
+    while (parent) {
       parent.open = true;
       parent = parent!.parentElement!.closest("details");
     }
@@ -62,30 +68,38 @@ const ExploreNotifiers: FC = () => {
     }
   };
 
-  const handleNotifiersChangeExpand = useCallback((id: string) => (value: boolean) => {
-    setExpandNotifiers((prev) => {
-      const newExpandNotifiers = new Set(prev);
-      if (value) {
-        newExpandNotifiers.add(id); 
-      } else {
-        newExpandNotifiers.delete(id);
-      }
-      return newExpandNotifiers;
-    });
-  }, []);
+  const handleNotifiersChangeExpand = useCallback(
+    (id: string) => (value: boolean) => {
+      setExpandNotifiers((prev) => {
+        const newExpandNotifiers = new Set(prev);
+        if (value) {
+          newExpandNotifiers.add(id);
+        } else {
+          newExpandNotifiers.delete(id);
+        }
+        return newExpandNotifiers;
+      });
+    },
+    [],
+  );
 
   const allKinds: Set<string> = new Set();
   const filteredNotifiers: APINotifier[] = [];
 
   const searchRegex = new RegExp(searchInput, "i");
 
-  notifiers.forEach(notifier => {
+  notifiers.forEach((notifier) => {
     const filteredTargets: APITarget[] = [];
     const targets = notifier.targets || [];
     targets.forEach((target) => {
       allKinds.add(notifier.kind);
       if (kinds?.length && !kinds.includes(notifier.kind)) return;
-      if (searchInput && !searchRegex.test(target.address) && !searchRegex.test(notifier.kind)) return;
+      if (
+        searchInput &&
+        !searchRegex.test(target.address) &&
+        !searchRegex.test(notifier.kind)
+      )
+        return;
       filteredTargets.push(target);
     });
     if (filteredTargets.length) {
@@ -107,32 +121,28 @@ const ExploreNotifiers: FC = () => {
         onChangeKinds={handleChangeKinds}
         onChangeSearch={handleChangeSearch}
       />
-
-      {isLoading && <Spinner />}
-      {error && <Alert variant="error">{error}</Alert>}
-      {!filteredNotifiers.length && <Alert variant="info">No notifiers found!</Alert>}
-      <div className="vm-explore-alerts-body">
-        {filteredNotifiers.map(notifier => (
-          <div
-            key={notifier.kind}
-            className="vm-explore-alert-group vm-block vm-block_empty-padding"
-            id={`notifier-${notifier.kind}`}
-          >
-            <Accordion
-              defaultExpanded={expandNotifiers.has(notifier.kind)}
-              key={`notifier-${notifier.kind}`}
-              onChange={handleNotifiersChangeExpand(notifier.kind)}
-              title={(
-                <NotifierHeader
-                  notifier={notifier}
-                />
-              )}
+      {(isLoading && <Spinner />) || (error && <Alert variant="error">{error}</Alert>) || (
+        !filteredNotifiers.length && <Alert variant="info">No notifiers found!</Alert>
+      ) || (
+        <div className="vm-explore-alerts-body">
+          {filteredNotifiers.map((notifier) => (
+            <div
+              key={notifier.kind}
+              className="vm-explore-alert-group vm-block vm-block_empty-padding"
+              id={`notifier-${notifier.kind}`}
             >
-              <Notifier targets={notifier.targets} />
-            </Accordion>
-          </div>
-        ))}
-      </div>
+              <Accordion
+                defaultExpanded={expandNotifiers.has(notifier.kind)}
+                key={`notifier-${notifier.kind}`}
+                onChange={handleNotifiersChangeExpand(notifier.kind)}
+                title={<NotifierHeader notifier={notifier} />}
+              >
+                <Notifier targets={notifier.targets} />
+              </Accordion>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

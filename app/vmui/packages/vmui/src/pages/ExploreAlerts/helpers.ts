@@ -1,3 +1,5 @@
+import { Rule } from "../../types";
+
 export const getChanges = (title: string, prevValues: string[]): string[] => {
   if (title === "All") return [];
 
@@ -9,4 +11,14 @@ export const getChanges = (title: string, prevValues: string[]): string[] => {
   }
 
   return Array.from(newValues);
+};
+
+export const getState = (rule: Rule) => {
+  let state = rule?.state || "ok";
+  if (!rule?.lastSamples && !rule?.lastSeriesFetched) {
+    state = "no match";
+  } else if (rule?.health != "ok") {
+    state = "unhealthy";
+  }
+  return state;
 };

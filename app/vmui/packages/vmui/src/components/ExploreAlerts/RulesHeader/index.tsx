@@ -7,27 +7,30 @@ import classNames from "classnames";
 import useDeviceDetect from "../../../hooks/useDeviceDetect";
 
 interface RulesHeaderProps {
-  ruleTypes: string[]
-  ruleTypeFilter: string
-  allRuleTypes: string[]
-  allStates: string[]
-  states: string[]
-  onChangeRuleTypes: (input: string) => void
-  onChangeStates: (input: string) => void
-  onChangeSearch: (input: string) => void
+  types: string[];
+  typeFilter: string;
+  allTypes: string[];
+  allStates: string[];
+  states: string[];
+  onChangeTypes: (input: string) => void;
+  onChangeStates: (input: string) => void;
+  onChangeSearch: (input: string) => void;
 }
 
 const RulesHeader: FC<RulesHeaderProps> = ({
-  ruleTypes,
-  ruleTypeFilter,
-  allRuleTypes,
+  types,
+  typeFilter,
+  allTypes,
   allStates,
   states,
-  onChangeRuleTypes,
+  onChangeTypes,
   onChangeStates,
   onChangeSearch,
 }) => {
-  const noStateText = useMemo(() => ruleTypes.length ? "" : "No states. Please select rule states", [ruleTypes]);
+  const noStateText = useMemo(
+    () => (types.length ? "" : "No states. Please select rule states"),
+    [types],
+  );
   const { isMobile } = useDeviceDetect();
 
   return (
@@ -40,15 +43,15 @@ const RulesHeader: FC<RulesHeaderProps> = ({
           "vm-block_mobile": isMobile,
         })}
       >
-        {ruleTypeFilter === "" && (
+        {typeFilter === "" && (
           <div className="vm-explore-alerts-header__rule_type">
             <Select
-              value={ruleTypes}
-              list={allRuleTypes}
+              value={types}
+              list={allTypes}
               label="Rules type"
               placeholder="Please select rule type"
-              onChange={onChangeRuleTypes}
-              autofocus={!!ruleTypes.length && !isMobile}
+              onChange={onChangeTypes}
+              autofocus={!!types.length && !isMobile}
               includeAll
               searchable
             />
@@ -70,7 +73,7 @@ const RulesHeader: FC<RulesHeaderProps> = ({
           <TextField
             label="Search"
             placeholder="Fitler by rule, name or labels"
-            startIcon={<SearchIcon/>}
+            startIcon={<SearchIcon />}
             onChange={onChangeSearch}
           />
         </div>

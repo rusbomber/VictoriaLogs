@@ -4,6 +4,7 @@ import { ArrowDownIcon } from "../Icons";
 import "./style.scss";
 
 interface AccordionProps {
+  id?: string
   title: ReactNode
   children: ReactNode
   defaultExpanded?: boolean
@@ -14,7 +15,8 @@ const Accordion: FC<AccordionProps> = ({
   defaultExpanded = false,
   onChange,
   title,
-  children
+  children,
+  id,
 }) => {
   const [isOpen, setIsOpen] = useState(defaultExpanded);
 
@@ -39,6 +41,7 @@ const Accordion: FC<AccordionProps> = ({
         className="vm-accordion-section"
         key="content"
         open={isOpen}
+        id={id}
       >
         <summary
           className="vm-accordion-header"

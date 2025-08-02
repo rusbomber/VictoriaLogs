@@ -10,6 +10,20 @@ const getProxy = (): Record<string, ProxyOptions> | undefined => {
   switch (playground) {
     case "LOGS": {
       return {
+        "/vmalert": {
+          target: "https://play-vmlogs.victoriametrics.com/select",
+          changeOrigin: true,
+          configure: (proxy) => {
+            proxy.on("proxyReq", (proxyReq) => {
+              proxyReq.removeHeader("AccountID");
+              proxyReq.removeHeader("ProjectID");
+            });
+
+            proxy.on("error", (err) => {
+              console.error("[proxy error]", err.message);
+            });
+          }
+        },
         "^(/select/.*|/flags)": {
           target: "https://play-vmlogs.victoriametrics.com",
           changeOrigin: true,

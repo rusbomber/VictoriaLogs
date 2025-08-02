@@ -193,55 +193,69 @@ export interface RuleType {
 }
 
 export interface Group {
-  name: string
-  file: string
-  rules: Rule[]
-  interval: number
-  limit: number
-  evaluationTime: number
-  type: string
-  id: string
-  concurrency: number
-  params: string[]
-  headers: string[]
-  notifierHeaders: string[]
-  labels: Record<string, string>
-  evalOffset: number
-  evalDelay: number
-  states: Record<string, number>
+  name: string;
+  file: string;
+  rules: Rule[];
+  interval: number;
+  limit: number;
+  evaluationTime: number;
+  type: string;
+  id: string;
+  concurrency: number;
+  params: string[];
+  headers: string[];
+  notifierHeaders: string[];
+  labels: Record<string, string>;
+  evalOffset: number;
+  evalDelay: number;
+  states: Record<string, number>;
 }
 
 export interface Rule {
-  state: string
-  name: string
-  query: string
-  duration: number
-  keepFiringFor: number
-  labels: Record<string, string>
-  annotations: Record<string, string>
-  alerts: Alert[]
-  health: string
-  lastEvaluation: number
-  lastError: string
-  evaluationTime: number
-  type: string
-  datasourceType: string
-  lastSamples: bigint
-  lastSeriesFetched: bigint
-  id: string
-  debug: boolean
+  state: string;
+  name: string;
+  query: string;
+  duration: number;
+  keepFiringFor: number;
+  labels: Record<string, string>;
+  annotations: Record<string, string>;
+  alerts: Alert[];
+  health: string;
+  lastEvaluation: number;
+  lastError: string;
+  evaluationTime: number;
+  type: string;
+  datasourceType: string;
+  lastSamples: bigint;
+  lastSeriesFetched: bigint;
+  id: string;
+  group_id: string;
+  debug: boolean;
+  updates: RuleUpdate[];
+}
+
+interface RuleUpdate {
+  time: string;
+  at: string;
+  duration: number;
+  error: string;
+  samples: number;
+  series_fetched: number;
 }
 
 export interface Alert {
-  state: string
-  value: string
-  labels: Record<string, string>
-  annotations: Record<string, string>
-  activeAt: number
-  id: string
-  source: string
-  restored: boolean
-  stabilizing: boolean
+  name: string;
+  state: string;
+  value: string;
+  group_id: string;
+  expression: string;
+  labels: Record<string, string>;
+  annotations: Record<string, string>;
+  activeAt: number;
+  id: string;
+  source: string;
+  restored: boolean;
+  stabilizing: boolean;
 }
 
 export interface Notifier {

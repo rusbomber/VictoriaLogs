@@ -3,25 +3,45 @@ import { compactObject } from "../../../utils/object";
 import useSearchParamsFromObject from "../../../hooks/useSearchParamsFromObject";
 
 interface rulesQueryProps {
-  ruleTypes?: string
-  states?: string
-  search?: string
+  types?: string;
+  states?: string;
+  search?: string;
+  rule_id: string;
+  group_id: string;
+  alert_id: string;
 }
 
-export const useRulesSetQueryParams = ({ ruleTypes, states, search }: rulesQueryProps) => {
+export const useRulesSetQueryParams = ({ 
+  types,
+  states,
+  search,
+  rule_id,
+  alert_id,
+  group_id,
+}: rulesQueryProps) => {
   const { setSearchParamsFromKeys } = useSearchParamsFromObject();
 
   const setSearchParamsFromState = () => {
     const params = compactObject({
-      ruleTypes,
+      types,
       states,
       search,
+      alert_id,
+      rule_id,
+      group_id,
     });
 
     setSearchParamsFromKeys(params);
   };
 
-  useEffect(setSearchParamsFromState, [ruleTypes, states, search]);
+  useEffect(setSearchParamsFromState, [
+    types,
+    states,
+    search,
+    rule_id,
+    group_id,
+    alert_id,
+  ]);
   useEffect(setSearchParamsFromState, []);
 };
 

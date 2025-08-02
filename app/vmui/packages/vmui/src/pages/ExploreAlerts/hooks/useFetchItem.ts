@@ -1,26 +1,35 @@
 import { useEffect, useMemo, useState } from "preact/compat";
-import { getGroupsUrl } from "../../../api/explore-alerts";
+import { getItemUrl } from "../../../api/explore-alerts";
 import { useAppState } from "../../../state/common/StateContext";
-import { ErrorTypes, Group } from "../../../types";
+import { ErrorTypes } from "../../../types";
 
-interface FetchGroupsReturn {
-  groups: Group[],
-  isLoading: boolean,
-  error?: ErrorTypes | string,
+interface FetchItemReturn<T> {
+  item?: T;
+  isLoading: boolean;
+  error?: ErrorTypes | string;
 }
 
-interface FetchGroupsProps {
-  typeFilter: string,
+interface FetchItemProps {
+  groupId: string;
+  id: string;
+  mode: string;
 }
 
-export const useFetchGroups = ({ typeFilter }: FetchGroupsProps): FetchGroupsReturn => {
+export const useFetchItem = <T>({
+  groupId,
+  id,
+  mode,
+}: FetchItemProps): FetchItemReturn<T> => {
   const { serverUrl } = useAppState();
 
-  const [groups, setGroups] = useState<Group[]>([]);
+  const [item, setItem] = useState<T>();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<ErrorTypes | string>();
 
-  const fetchUrl = useMemo(() => getGroupsUrl(serverUrl, typeFilter), [serverUrl, typeFilter]);
+  const fetchUrl = useMemo(
+    () => getItemUrl(serverUrl, groupId, id, mode),
+    [serverUrl, groupId, id, mode],
+  );
 
   useEffect(() => {
     const fetchData = async () => {
@@ -30,8 +39,7 @@ export const useFetchGroups = ({ typeFilter }: FetchGroupsProps): FetchGroupsRet
         const resp = await response.json();
 
         if (response.ok) {
-          const data = (resp.data.groups || []) as Group[];
-          setGroups(data.sort((a, b) => a.name.localeCompare(b.name)));
+          setItem(resp as T);
           setError(undefined);
         } else {
           setError(`${resp.errorType}\r\n${resp?.error}`);
@@ -47,5 +55,5 @@ export const useFetchGroups = ({ typeFilter }: FetchGroupsProps): FetchGroupsRet
     fetchData().catch(console.error);
   }, [fetchUrl]);
 
-  return { groups, isLoading, error };
+  return { item, isLoading, error };
 };
