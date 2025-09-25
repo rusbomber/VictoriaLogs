@@ -3821,6 +3821,20 @@ The `<PRI>` part is optional. If it is missing, then `priority`, `facility` and 
 The `[STRUCTURED-DATA]` is parsed into fields with the `SD-ID.param1`, `SD-ID.param2`, ..., `SD-ID.paramN` names and the corresponding values
 according to [the specification](https://datatracker.ietf.org/doc/html/rfc5424#section-6.3).
 
+If the `app_name` equals to `CEF` and the `message` contains Common Event Format data for SIEM
+aka [CEF for Syslog](https://www.microfocus.com/documentation/arcsight/arcsight-smartconnectors-8.3/cef-implementation-standard/Content/CEF/Chapter%201%20What%20is%20CEF.htm),
+then it is automatically parsed into the following fields:
+
+- `cef.version` - the CEF version
+- `cef.device_vendor` - the device vendor field
+- `cef.device_product` - the device product field
+- `cef.device_version` - the device version field
+- `cef.device_event_class_id` - the device event class id
+- `cef.name` - the CEF name
+- `cef.severity` - the severity field
+
+An optional `extension` fields are parsed into `cef.extension.<key>=<value>` fields.
+
 For example, the following query unpacks [syslog](https://en.wikipedia.org/wiki/Syslog) message from the [`_msg` field](https://docs.victoriametrics.com/victorialogs/keyconcepts/#message-field)
 across logs for the last 5 minutes:
 
