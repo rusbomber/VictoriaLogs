@@ -1616,6 +1616,7 @@ LogsQL supports the following pipes:
 - [`replace_regexp`](https://docs.victoriametrics.com/victorialogs/logsql/#replace_regexp-pipe) updates [log fields](https://docs.victoriametrics.com/victorialogs/keyconcepts/#data-model) with regular expressions.
 - [`running_stats`](https://docs.victoriametrics.com/victorialogs/logsql/#running_stats-pipe) performs running stats calculations over the given [log fields](https://docs.victoriametrics.com/victorialogs/keyconcepts/#data-model).
 - [`sample`](https://docs.victoriametrics.com/victorialogs/logsql/#sample-pipe) returns a sample of the matching logs according to the provided `sample` value.
+- [`set_stream_fields`](https://docs.victoriametrics.com/victorialogs/logsql/#set_stream_fields-pipe) sets the given log fields as [`_stream` fields](https://docs.victoriametrics.com/victorialogs/keyconcepts/#stream-fields).
 - [`sort`](https://docs.victoriametrics.com/victorialogs/logsql/#sort-pipe) sorts logs by the given [fields](https://docs.victoriametrics.com/victorialogs/keyconcepts/#data-model).
 - [`split`](https://docs.victoriametrics.com/victorialogs/logsql/#split-pipe) splits the given [log field](https://docs.victoriametrics.com/victorialogs/keyconcepts/#data-model) into tokens by the given separator.
 - [`stats`](https://docs.victoriametrics.com/victorialogs/logsql/#stats-pipe) calculates various stats over the selected logs.
@@ -2975,6 +2976,35 @@ _time:1h error | sample 100
 See also:
 
 - [`limit` pipe](https://docs.victoriametrics.com/victorialogs/logsql/#limit-pipe)
+
+### set_stream_fields pipe
+
+The `| set_stream_fields field1, ..., fieldN` [pipe](https://docs.victoriametrics.com/victorialogs/logsql/#pipes)
+sets the given [log fields](https://docs.victoriametrics.com/victorialogs/keyconcepts/#data-model)
+as [`_stream` fields](https://docs.victoriametrics.com/victorialogs/keyconcepts/#stream-fields).
+
+For example, if the logs returned by `_time:5m` [filter](https://docs.victoriametrics.com/victorialogs/logsql/#filters) have `host="foo"` and `path="/bar"` fields,
+then the following query sets `_stream` field to `{host="foo", path="/bar"}`:
+
+```logsql
+_time:5m | set_stream_fields host, path
+```
+
+See also:
+
+- [conditional `set_stream_fields`](https://docs.victoriametrics.com/victorialogs/logsql/#conditional-set_stream_fields)
+- [`format` pipe](https://docs.victoriametrics.com/victorialogs/logsql/#format-pipe)
+
+#### Conditional set_stream_fields
+
+The [`set_stream_fields` pipe](https://docs.victoriametrics.com/victorialogs/logsql/#set_stream_fields-pipe) can be applied to a subset of input logs
+which match the given [filters](https://docs.victoriametrics.com/victorialogs/logsql/#filters), by using `if (...)` after the `set_stream_fields`.
+For example, the following query updates [`_stream` field](https://docs.victoriametrics.com/victorialogs/keyconcepts/#stream-fields)
+only for logs with the `host="foobar"` field, while leaving the original `_stream` value for the rest of the logs:
+
+```logsql
+_time:5m | set_stream_fields if (host:="foobar") host, app
+```
 
 ### sort pipe
 
