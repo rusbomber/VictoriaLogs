@@ -63,24 +63,19 @@ func (pf *pipeFormat) canReturnLastNResults() bool {
 }
 
 func (pf *pipeFormat) updateNeededFields(f *prefixfilter.Filter) {
-	if f.MatchNothing() {
-		if pf.iff != nil {
-			f.AddAllowFilters(pf.iff.allowFilters)
-		}
+	if !f.MatchString(pf.resultField) {
 		return
 	}
 
-	if f.MatchString(pf.resultField) {
-		if !pf.keepOriginalFields && !pf.skipEmptyResults {
-			f.AddDenyFilter(pf.resultField)
-		}
-		if pf.iff != nil {
-			f.AddAllowFilters(pf.iff.allowFilters)
-		}
-		for _, step := range pf.steps {
-			if step.field != "" {
-				f.AddAllowFilter(step.field)
-			}
+	if !pf.keepOriginalFields && !pf.skipEmptyResults {
+		f.AddDenyFilter(pf.resultField)
+	}
+	if pf.iff != nil {
+		f.AddAllowFilters(pf.iff.allowFilters)
+	}
+	for _, step := range pf.steps {
+		if step.field != "" {
+			f.AddAllowFilter(step.field)
 		}
 	}
 }
