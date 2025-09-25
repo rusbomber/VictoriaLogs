@@ -3736,7 +3736,7 @@ func needQuoteToken(s string) bool {
 	if _, ok := reservedKeywords[sLower]; ok {
 		return true
 	}
-	if sLower == "by" || isPipeName(sLower) || isStatsFuncName(sLower) {
+	if isPipeName(sLower) || isStatsFuncName(sLower) {
 		return true
 	}
 	for _, r := range s {
@@ -3811,6 +3811,15 @@ var reservedKeywords = func() map[string]struct{} {
 
 		// queryOptions start with this keyword
 		"options",
+
+		// 'if' is used in conditional pipes such as `format if (...) ...`
+		"if",
+
+		// 'by' is used in various pipes such as `stats by (...) ...`
+		"by",
+
+		// 'as' is used in various pipes such as `format ... as ...`
+		"as",
 	}
 	m := make(map[string]struct{}, len(kws))
 	for _, kw := range kws {
