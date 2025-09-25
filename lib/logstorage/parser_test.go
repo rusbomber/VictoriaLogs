@@ -3508,7 +3508,7 @@ func TestQueryCanReturnLastNResults(t *testing.T) {
 	f("* | unpack_logfmt x", true)
 	f("* | unpack_syslog x", true)
 	f("* | unpack_words x", true)
-	f("* | unroll by (x)", false)
+	f("* | unroll by (x)", true)
 
 	// There is no _time field
 	f("* | fields foo, bar", false)
@@ -3678,6 +3678,7 @@ func TestQueryGetStatsByFieldsAddGroupingByTime_Success(t *testing.T) {
 	f("* | unpack_logfmt x | count() x", nsecsPerDay, []string{"_time"}, `* | unpack_logfmt from x | stats by (_time:86400000000000) count(*) as x`)
 	f("* | unpack_syslog x | count() x", nsecsPerDay, []string{"_time"}, `* | unpack_syslog from x | stats by (_time:86400000000000) count(*) as x`)
 	f("* | unpack_words x | count() x", nsecsPerDay, []string{"_time"}, `* | unpack_words from x | stats by (_time:86400000000000) count(*) as x`)
+	f("* | unroll by (x) | count() x", nsecsPerDay, []string{"_time"}, `* | unroll by (x) | stats by (_time:86400000000000) count(*) as x`)
 }
 
 func TestQueryGetStatsByFieldsAddGroupingByTime_Failure(t *testing.T) {
@@ -3754,7 +3755,6 @@ func TestQueryGetStatsByFieldsAddGroupingByTime_Failure(t *testing.T) {
 	f("* | top 5 by (x) | count()")
 	f("* | union (x) | count()")
 	f("* | uniq (x) | count()")
-	f("* | unroll by (x) | count()")
 }
 
 func TestQueryGetStatsByFields_Success(t *testing.T) {
