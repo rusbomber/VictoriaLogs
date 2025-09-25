@@ -3113,8 +3113,8 @@ func TestQueryGetNeededColumns(t *testing.T) {
 	f(`* | format "foo<f1>" as s1`, `*`, `s1`)
 	f(`* | format "foo<s1>" as s1`, `*`, ``)
 
-	f(`* | format if (x1:y) "foo" as s1`, `*`, `s1`)
-	f(`* | format if (x1:y) "foo<f1>" as s1`, `*`, `s1`)
+	f(`* | format if (x1:y) "foo" as s1`, `*`, ``)
+	f(`* | format if (x1:y) "foo<f1>" as s1`, `*`, ``)
 	f(`* | format if (s1:y) "foo<f1>" as s1`, `*`, ``)
 	f(`* | format if (x1:y) "foo<s1>" as s1`, `*`, ``)
 
@@ -3126,7 +3126,7 @@ func TestQueryGetNeededColumns(t *testing.T) {
 	f(`* | format "foo<s1>" as s1 | fields f1`, `f1`, ``)
 	f(`* | format "foo<s1>" as s1 | fields s1`, `s1`, ``)
 
-	f(`* | format if (f1:x) "foo" as s1 | fields s1`, `f1`, ``)
+	f(`* | format if (f1:x) "foo" as s1 | fields s1`, `f1,s1`, ``)
 	f(`* | format if (f1:x) "foo" as s1 | fields s2`, `s2`, ``)
 
 	f(`* | format "foo" as s1 | rm f1`, `*`, `f1,s1`)
@@ -3138,8 +3138,8 @@ func TestQueryGetNeededColumns(t *testing.T) {
 	f(`* | format "foo<s1>" as s1 | rm s1`, `*`, `s1`)
 
 	f(`* | format if (f1:x) "foo" as s1 | rm s1`, `*`, `s1`)
-	f(`* | format if (f1:x) "foo" as s1 | rm f1`, `*`, `s1`)
-	f(`* | format if (f1:x) "foo" as s1 | rm f2`, `*`, `f2,s1`)
+	f(`* | format if (f1:x) "foo" as s1 | rm f1`, `*`, ``)
+	f(`* | format if (f1:x) "foo" as s1 | rm f2`, `*`, `f2`)
 
 	f(`* | extract "<f1>x<f2>" from s1`, `*`, `f1,f2`)
 	f(`* | extract if (f3:foo) "<f1>x<f2>" from s1`, `*`, `f1,f2`)

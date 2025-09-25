@@ -2313,7 +2313,7 @@ See also:
 If the [`format` pipe](https://docs.victoriametrics.com/victorialogs/logsql/#format-pipe) must be applied only to some [log entries](https://docs.victoriametrics.com/victorialogs/keyconcepts/#data-model),
 then add `if (<filters>)` just after the `format` word.
 The `<filters>` can contain arbitrary [filters](https://docs.victoriametrics.com/victorialogs/logsql/#filters). For example, the following query stores the formatted result to `message` field
-only if `ip` and `host` [fields](https://docs.victoriametrics.com/victorialogs/keyconcepts/#data-model) aren't empty:
+only if `ip` and `host` [fields](https://docs.victoriametrics.com/victorialogs/keyconcepts/#data-model) aren't empty, otherwise the original `message` field isn't modified:
 
 ```logsql
 _time:5m | format if (ip:* and host:*) "request from <ip>:<host>" as message

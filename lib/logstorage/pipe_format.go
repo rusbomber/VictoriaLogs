@@ -67,11 +67,10 @@ func (pf *pipeFormat) updateNeededFields(f *prefixfilter.Filter) {
 		return
 	}
 
-	if !pf.keepOriginalFields && !pf.skipEmptyResults {
-		f.AddDenyFilter(pf.resultField)
-	}
 	if pf.iff != nil {
 		f.AddAllowFilters(pf.iff.allowFilters)
+	} else if !pf.keepOriginalFields && !pf.skipEmptyResults {
+		f.AddDenyFilter(pf.resultField)
 	}
 	for _, step := range pf.steps {
 		if step.field != "" {
