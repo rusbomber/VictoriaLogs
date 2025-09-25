@@ -42,14 +42,12 @@ func (pr *pipeRename) canLiveTail() bool {
 }
 
 func (pr *pipeRename) canReturnLastNResults() bool {
-	for i := 0; i < len(pr.srcFieldFilters); i++ {
-		src := pr.srcFieldFilters[i]
-		dst := pr.dstFieldFilters[i]
-		if prefixfilter.MatchFilter(src, "_time") || prefixfilter.MatchFilter(dst, "_time") {
-			return false
-		}
+	if prefixfilter.MatchFilters(pr.srcFieldFilters, "_time") {
+		return false
 	}
-
+	if prefixfilter.MatchFilters(pr.dstFieldFilters, "_time") {
+		return false
+	}
 	return true
 }
 
