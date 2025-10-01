@@ -18,6 +18,8 @@ according to [these docs](https://docs.victoriametrics.com/victorialogs/quicksta
 
 ## tip
 
+* FEATURE: [LogsQL](https://docs.victoriametrics.com/victorialogs/logsql/): expand [`equals_common_case` filter](https://docs.victoriametrics.com/victorialogs/logsql/#equals_common_case-filter) and [`contains_common_case` filter](https://docs.victoriametrics.com/victorialogs/logsql/#contains_common_case-filter), so they match phrases with whitespace in front of captial letters. For example, `_msg:contains_common_case("VictoriaMetrics")` now matches `Victoria Metrics`, `victoria metrics`, `VICTORIA METRICS`, `Victoria metrics` and `victoria Metrics` additionally to `VictoriaMetrics`, `victoriametrics`, `VICTORIAMETRICS`, `Victoriametrics` and `victoriaMetrics`.
+
 * BUGFIX: all components: restore sorting order of summary and quantile metrics exposed by VictoriaLogs components on `/metrics` page. See [metrics#105](https://github.com/VictoriaMetrics/metrics/pull/105) for details.
 
 ## [v1.35.0](https://github.com/VictoriaMetrics/VictoriaLogs/releases/tag/v1.35.0)
