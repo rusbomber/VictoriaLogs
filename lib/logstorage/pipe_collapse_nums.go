@@ -157,7 +157,7 @@ func indexNumStart(s string, offset int) int {
 		if n == 0 {
 			return 0
 		}
-		if !isLetterOrDigit(s[n-1]) || isSpecialNumStart(s[n-1]) {
+		if !isTokenChar(s[n-1]) || isSpecialNumStart(s[n-1]) {
 			return n
 		}
 		n++
@@ -176,16 +176,10 @@ func indexNumEnd(s string, offset int) int {
 }
 
 func isValidNum(s string, start, end int) bool {
-	if end < len(s) && isLetterOrDigit(s[end]) && !isSpecialNumEnd(s[end]) {
+	if end < len(s) && isTokenChar(s[end]) && !isSpecialNumEnd(s[end]) {
 		return false
 	}
 	return canBeTreatedAsNum(s[start:end])
-}
-
-// isLetterOrDigit returns true for ASCII letters and digits; '_' is not treated as alphanumeric here
-// in order to act as a separator for collapse_nums boundaries.
-func isLetterOrDigit(c byte) bool {
-	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
 }
 
 func appendPrettifyCollapsedNums(dst, src []byte) []byte {
@@ -278,9 +272,9 @@ func hasHexChars(s string) bool {
 }
 
 func isSpecialNumStart(ch byte) bool {
-	return ch == 'T' || ch == 'X' || ch == 'x' || ch == 'v' || ch == 's' || ch == 'h' || ch == 'm'
+	return ch == '_' || ch == 'T' || ch == 'X' || ch == 'x' || ch == 'v' || ch == 's' || ch == 'h' || ch == 'm'
 }
 
 func isSpecialNumEnd(ch byte) bool {
-	return ch == 'T' || ch == 'Z' || ch == 's' || ch == 'm' || ch == 'h' || ch == 'u' || ch == 'n'
+	return ch == '_' || ch == 'T' || ch == 'Z' || ch == 's' || ch == 'm' || ch == 'h' || ch == 'u' || ch == 'n'
 }
