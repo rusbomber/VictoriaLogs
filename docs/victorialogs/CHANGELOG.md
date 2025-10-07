@@ -18,8 +18,6 @@ according to [these docs](https://docs.victoriametrics.com/victorialogs/quicksta
 
 ## tip
 
-* SECURITY: upgrade libcrypto3 and libssl3 to `3.5.4-r0` to address CVE-2025-9230, CVE-2025-9231, CVE-2025-9232.
-
 * FEATURE: [LogsQL](https://docs.victoriametrics.com/victorialogs/logsql/): improve [`collapse_nums` pipe](https://docs.victoriametrics.com/victorialogs/logsql/#collapse_nums-pipe) by treating `_` (underscore) as a separator for numeric tokens. This enables collapsing underscore‑delimited numbers (e.g. `temp_23_175863242537_93_98_` → `temp_<N>_<N>_<N>_<N>_`) for better normalization and grouping. See [#703](https://github.com/VictoriaMetrics/VictoriaLogs/issues/703).
 * FEATURE: [web UI](https://docs.victoriametrics.com/victorialogs/querying/#web-ui): add support for zooming the Hits chart to millisecond precision. See [#112](https://github.com/VictoriaMetrics/VictoriaLogs/issues/112).
 
