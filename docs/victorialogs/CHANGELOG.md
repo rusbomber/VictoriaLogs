@@ -23,7 +23,7 @@ according to [these docs](https://docs.victoriametrics.com/victorialogs/quicksta
 Released at 2025-09-27
 
 * FEATURE: [web UI](https://docs.victoriametrics.com/victorialogs/querying/#web-ui): add support for zooming the Hits chart to millisecond precision. See [#112](https://github.com/VictoriaMetrics/VictoriaLogs/issues/112).
-* FEATURE: [web UI](https://docs.victoriametrics.com/victorialogs/querying/#web-ui): add warning modal for `limit > 500` with session suppression; validate limit to `[1, 10000]`. See [#500](https://github.com/VictoriaMetrics/VictoriaLogs/issues/695).
+* FEATURE: [web UI](https://docs.victoriametrics.com/victorialogs/querying/#web-ui): add warning modal for `limit > 500` with session suppression; validate limit to `[1, 10000]`. See [#500](https://github.com/VictoriaMetrics/VictoriaLogs/issues/500).
 
 * BUGFIX: [web UI](https://docs.victoriametrics.com/victorialogs/querying/#web-ui): fix incorrect X-axis time labels after switching time zones; axis ticks now reflect the selected time zone correctly.
 
