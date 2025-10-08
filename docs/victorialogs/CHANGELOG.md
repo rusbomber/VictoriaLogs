@@ -18,6 +18,15 @@ according to [these docs](https://docs.victoriametrics.com/victorialogs/quicksta
 
 ## tip
 
+## [v1.36.1](https://github.com/VictoriaMetrics/VictoriaLogs/releases/tag/v1.36.1)
+
+Released at 2025-09-27
+
+* FEATURE: [web UI](https://docs.victoriametrics.com/victorialogs/querying/#web-ui): add support for zooming the Hits chart to millisecond precision. See [#112](https://github.com/VictoriaMetrics/VictoriaLogs/issues/112).
+* FEATURE: [web UI](https://docs.victoriametrics.com/victorialogs/querying/#web-ui): add warning modal for `limit > 500` with session suppression; validate limit to `[1, 10000]`. See [#500](https://github.com/VictoriaMetrics/VictoriaLogs/issues/695).
+
+* BUGFIX: [web UI](https://docs.victoriametrics.com/victorialogs/querying/#web-ui): fix incorrect X-axis time labels after switching time zones; axis ticks now reflect the selected time zone correctly.
+
 ## [v1.36.0](https://github.com/VictoriaMetrics/VictoriaLogs/releases/tag/v1.36.0)
 
 Released at 2025-09-27
@@ -25,12 +34,9 @@ Released at 2025-09-27
 * SECURITY: upgrade Go builder from Go1.25.1 to Go1.25.2. See [the list of issues addressed in Go1.25.2](https://github.com/golang/go/issues?q=milestone%3AGo1.25.2%20label%3ACherryPickApproved).
 
 * FEATURE: [LogsQL](https://docs.victoriametrics.com/victorialogs/logsql/): improve [`collapse_nums` pipe](https://docs.victoriametrics.com/victorialogs/logsql/#collapse_nums-pipe) by treating `_` (underscore) as a separator for numeric tokens. This enables collapsing underscore‑delimited numbers (e.g. `temp_23_175863242537_93_98_` → `temp_<N>_<N>_<N>_<N>_`) for better normalization and grouping. See [#703](https://github.com/VictoriaMetrics/VictoriaLogs/issues/703).
-* FEATURE: [web UI](https://docs.victoriametrics.com/victorialogs/querying/#web-ui): add support for zooming the Hits chart to millisecond precision. See [#112](https://github.com/VictoriaMetrics/VictoriaLogs/issues/112).
-* FEATURE: [web UI](https://docs.victoriametrics.com/victorialogs/querying/#web-ui): add warning modal for `limit > 500` with session suppression; validate limit to `[1, 10000]`. See [#500](https://github.com/VictoriaMetrics/VictoriaLogs/issues/695).
 
 * BUGFIX: [HTTP querying APIs](https://docs.victoriametrics.com/victorialogs/querying/#http-api): treat `end` query arg as exclusive bound for time ranges, i.e. use `[start, end)` instead of `[start, end]`, e.g. the first nanosecond at the `end` isn't included in the selected time range. This affects endpoints accepting `start`/`end` (e.g. `/select/logsql/query`, `/select/logsql/hits`, `/select/logsql/stats_query_range`, `/select/logsql/streams`, etc.). See [VictoriaMetrics#9753](https://github.com/VictoriaMetrics/VictoriaMetrics/issues/9753) and [#587](https://github.com/VictoriaMetrics/VictoriaLogs/issues/587) for more details.
 * BUGFIX: all components: restore sorting order of summary and quantile metrics exposed by VictoriaLogs components on `/metrics` page. See [metrics#105](https://github.com/VictoriaMetrics/metrics/pull/105) for details.
-* BUGFIX: [web UI](https://docs.victoriametrics.com/victorialogs/querying/#web-ui): fix incorrect X-axis time labels after switching time zones; axis ticks now reflect the selected time zone correctly.
 
 ## [v1.35.0](https://github.com/VictoriaMetrics/VictoriaLogs/releases/tag/v1.35.0)
 
