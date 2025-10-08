@@ -18,6 +18,10 @@ according to [these docs](https://docs.victoriametrics.com/victorialogs/quicksta
 
 ## tip
 
+## [v1.36.0](https://github.com/VictoriaMetrics/VictoriaLogs/releases/tag/v1.36.0)
+
+Released at 2025-09-27
+
 * SECURITY: upgrade Go builder from Go1.25.1 to Go1.25.2. See [the list of issues addressed in Go1.25.2](https://github.com/golang/go/issues?q=milestone%3AGo1.25.2%20label%3ACherryPickApproved).
 
 * FEATURE: [LogsQL](https://docs.victoriametrics.com/victorialogs/logsql/): improve [`collapse_nums` pipe](https://docs.victoriametrics.com/victorialogs/logsql/#collapse_nums-pipe) by treating `_` (underscore) as a separator for numeric tokens. This enables collapsing underscore‑delimited numbers (e.g. `temp_23_175863242537_93_98_` → `temp_<N>_<N>_<N>_<N>_`) for better normalization and grouping. See [#703](https://github.com/VictoriaMetrics/VictoriaLogs/issues/703).
