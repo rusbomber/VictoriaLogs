@@ -1,0 +1,31 @@
+@use "src/styles/variables" as *;
+
+.vm-overview-logs {
+  display: grid;
+  gap: $padding-global;
+
+  &-header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: $padding-small;
+    padding: 0 $padding-global $padding-global;
+    border-bottom: $border-divider;
+    margin-inline: -$padding-global;
+
+    &__actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex-grow: 1;
+    }
+  }
+
+  &-query {
+    flex-grow: 1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    font-size: $font-size-small;
+  }
+}
