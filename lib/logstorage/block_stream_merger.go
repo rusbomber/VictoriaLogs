@@ -72,11 +72,6 @@ type blockStreamMerger struct {
 	//
 	// It is used for flushing rows to blocks when their size reaches maxUncompressedBlockSize
 	uncompressedRowsSizeBytes uint64
-
-	// uniqueFields is an upper bound estimation for the number of unique fields in either rows or bd
-	//
-	// It is used for limiting the number of columns written per block
-	uniqueFields int
 }
 
 func (bsm *blockStreamMerger) reset() {
@@ -109,7 +104,6 @@ func (bsm *blockStreamMerger) resetRows() {
 	bsm.rowsTmp.reset()
 
 	bsm.uncompressedRowsSizeBytes = 0
-	bsm.uniqueFields = 0
 }
 
 func (bsm *blockStreamMerger) mustInit(bsw *blockStreamWriter, bsrs []*blockStreamReader) {
@@ -131,7 +125,6 @@ func (bsm *blockStreamMerger) mustInit(bsw *blockStreamWriter, bsrs []*blockStre
 // mustWriteBlock writes bd to bsm
 func (bsm *blockStreamMerger) mustWriteBlock(bd *blockData) {
 	bsm.checkNextBlock(bd)
-	uniqueFields := len(bd.columnsData) + len(bd.constColumns)
 	switch {
 	case !bd.streamID.equal(&bsm.streamID):
 		// The bd contains another streamID.
@@ -144,19 +137,6 @@ func (bsm *blockStreamMerger) mustWriteBlock(bd *blockData) {
 		} else {
 			// Slow path - copy the bd to the curr bd.
 			bsm.bd.copyFrom(&bsm.a, bd)
-			bsm.uniqueFields = uniqueFields
-		}
-	case bsm.uniqueFields+uniqueFields > maxColumnsPerBlock:
-		// Cannot merge bd with bsm.rows, because too many columns will be created.
-		// See https://github.com/VictoriaMetrics/VictoriaMetrics/issues/4762
-		//
-		// Flush bsm.rows and copy the bd to the curr bd.
-		bsm.mustFlushRows()
-		if uniqueFields >= maxColumnsPerBlock {
-			bsm.bsw.MustWriteBlockData(bd)
-		} else {
-			bsm.bd.copyFrom(&bsm.a, bd)
-			bsm.uniqueFields = uniqueFields
 		}
 	case bd.uncompressedSizeBytes >= maxUncompressedBlockSize:
 		// The bd contains the same streamID and it is full,
@@ -169,7 +149,6 @@ func (bsm *blockStreamMerger) mustWriteBlock(bd *blockData) {
 		// The bd contains the same streamID and it isn't full,
 		// so it must be merged with the current log entries.
 		bsm.mustMergeRows(bd)
-		bsm.uniqueFields += uniqueFields
 	}
 }
 
