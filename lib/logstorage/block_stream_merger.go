@@ -20,7 +20,7 @@ func mustMergeBlockStreams(ph *partHeader, bsw *blockStreamWriter, bsrs []*block
 			break
 		}
 		bsr := bsm.readersHeap[0]
-		bsm.mustWriteBlock(&bsr.blockData, bsw)
+		bsm.mustWriteBlock(&bsr.blockData)
 		if bsr.NextBlock() {
 			heap.Fix(&bsm.readersHeap, 0)
 		} else {
@@ -128,7 +128,7 @@ func (bsm *blockStreamMerger) mustInit(bsw *blockStreamWriter, bsrs []*blockStre
 }
 
 // mustWriteBlock writes bd to bsm
-func (bsm *blockStreamMerger) mustWriteBlock(bd *blockData, bsw *blockStreamWriter) {
+func (bsm *blockStreamMerger) mustWriteBlock(bd *blockData) {
 	bsm.checkNextBlock(bd)
 	uniqueFields := len(bd.columnsData) + len(bd.constColumns)
 	switch {
@@ -139,7 +139,7 @@ func (bsm *blockStreamMerger) mustWriteBlock(bd *blockData, bsw *blockStreamWrit
 		bsm.streamID = bd.streamID
 		if bd.uncompressedSizeBytes >= maxUncompressedBlockSize {
 			// Fast path - write full bd to the output without extracting log entries from it.
-			bsw.MustWriteBlockData(bd)
+			bsm.bsw.MustWriteBlockData(bd)
 		} else {
 			// Slow path - copy the bd to the curr bd.
 			bsm.a.reset()
@@ -153,7 +153,7 @@ func (bsm *blockStreamMerger) mustWriteBlock(bd *blockData, bsw *blockStreamWrit
 		// Flush bsm.rows and copy the bd to the curr bd.
 		bsm.mustFlushRows()
 		if uniqueFields >= maxColumnsPerBlock {
-			bsw.MustWriteBlockData(bd)
+			bsm.bsw.MustWriteBlockData(bd)
 		} else {
 			bsm.a.reset()
 			bsm.bd.copyFrom(&bsm.a, bd)
@@ -165,7 +165,7 @@ func (bsm *blockStreamMerger) mustWriteBlock(bd *blockData, bsw *blockStreamWrit
 		// without the need to merge the bd with the current log entries.
 		// Write the current log entries and then the bd.
 		bsm.mustFlushRows()
-		bsw.MustWriteBlockData(bd)
+		bsm.bsw.MustWriteBlockData(bd)
 	default:
 		// The bd contains the same streamID and it isn't full,
 		// so it must be merged with the current log entries.
