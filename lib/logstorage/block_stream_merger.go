@@ -143,7 +143,6 @@ func (bsm *blockStreamMerger) mustWriteBlock(bd *blockData) {
 			bsm.bsw.MustWriteBlockData(bd)
 		} else {
 			// Slow path - copy the bd to the curr bd.
-			bsm.a.reset()
 			bsm.bd.copyFrom(&bsm.a, bd)
 			bsm.uniqueFields = uniqueFields
 		}
@@ -156,7 +155,6 @@ func (bsm *blockStreamMerger) mustWriteBlock(bd *blockData) {
 		if uniqueFields >= maxColumnsPerBlock {
 			bsm.bsw.MustWriteBlockData(bd)
 		} else {
-			bsm.a.reset()
 			bsm.bd.copyFrom(&bsm.a, bd)
 			bsm.uniqueFields = uniqueFields
 		}
