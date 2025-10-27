@@ -81,6 +81,7 @@ type blockStreamMerger struct {
 
 func (bsm *blockStreamMerger) reset() {
 	bsm.bsw = nil
+	bsm.bsrs = nil
 
 	rhs := bsm.readersHeap
 	for i := range rhs {
