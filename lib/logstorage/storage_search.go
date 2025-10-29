@@ -88,6 +88,8 @@ func newQueryContext(ctx context.Context, qs *QueryStats, tenantIDs []TenantID, 
 }
 
 // storageSearchOptions contain options used for search in the Storage.
+//
+// This struct must be created via Storage.getSearchOptions() call.
 type storageSearchOptions struct {
 	// tenantIDs must contain the list of tenantIDs for the search.
 	tenantIDs []TenantID
@@ -102,7 +104,12 @@ type storageSearchOptions struct {
 	// maxTimestamp is the maximum timestamp for the search
 	maxTimestamp int64
 
+	// sf is an optional stream filter to use for the search before applying the filter
+	streamFilter *StreamFilter
+
 	// filter is the filter to use for the search
+	//
+	// The streamFilter must be applied before applying the filter
 	filter filter
 
 	// fieldsFilter is the filter of fields to return in the result
@@ -113,6 +120,8 @@ type storageSearchOptions struct {
 }
 
 // partitionSearchOptions is search options for the partition.
+//
+// this struct must be created via partition.getSearchOptions() call.
 type partitionSearchOptions struct {
 	// Optional sorted list of tenantIDs for the search.
 	// If it is empty, then the search is performed by streamIDs
@@ -186,23 +195,7 @@ func (s *Storage) runQuery(qctx *QueryContext, writeBlock writeBlockResultFunc) 
 	}
 	q := qNew
 
-	streamIDs := q.getStreamIDs()
-	sort.Slice(streamIDs, func(i, j int) bool {
-		return streamIDs[i].less(&streamIDs[j])
-	})
-
-	minTimestamp, maxTimestamp := q.GetFilterTimeRange()
-	fieldsFilter := getNeededColumns(q.pipes)
-
-	sso := &storageSearchOptions{
-		tenantIDs:    qctx.TenantIDs,
-		streamIDs:    streamIDs,
-		minTimestamp: minTimestamp,
-		maxTimestamp: maxTimestamp,
-		filter:       q.f,
-		fieldsFilter: fieldsFilter,
-		timeOffset:   -q.opts.timeOffset,
-	}
+	sso := s.getSearchOptions(qctx.TenantIDs, q)
 
 	search := func(stopCh <-chan struct{}, writeBlockToPipes writeBlockResultFunc) error {
 		workersCount := q.GetParallelReaders(s.defaultParallelReaders)
@@ -212,6 +205,28 @@ func (s *Storage) runQuery(qctx *QueryContext, writeBlock writeBlockResultFunc) 
 
 	concurrency := q.GetConcurrency()
 	return runPipes(qctx, q.pipes, search, writeBlock, concurrency)
+}
+
+func (s *Storage) getSearchOptions(tenantIDs []TenantID, q *Query) *storageSearchOptions {
+	streamIDs := q.getStreamIDs()
+	sort.Slice(streamIDs, func(i, j int) bool {
+		return streamIDs[i].less(&streamIDs[j])
+	})
+
+	minTimestamp, maxTimestamp := q.GetFilterTimeRange()
+	sf, f := getCommonStreamFilter(q.f)
+	fieldsFilter := getNeededColumns(q.pipes)
+
+	return &storageSearchOptions{
+		tenantIDs:    tenantIDs,
+		streamIDs:    streamIDs,
+		minTimestamp: minTimestamp,
+		maxTimestamp: maxTimestamp,
+		streamFilter: sf,
+		filter:       f,
+		fieldsFilter: fieldsFilter,
+		timeOffset:   -q.opts.timeOffset,
+	}
 }
 
 // searchFunc must perform search and pass its results to writeBlock.
@@ -1232,9 +1247,11 @@ func (s *Storage) searchParallel(workersCount int, sso *storageSearchOptions, qs
 		wg.Add(1)
 		go func(workerID uint) {
 			defer wg.Done()
+
 			qsLocal := &QueryStats{}
 			bs := getBlockSearch()
 			bm := getBitmap(0)
+
 			for bswb := range workCh {
 				bsws := bswb.bsws
 				for i := range bsws {
@@ -1263,9 +1280,11 @@ func (s *Storage) searchParallel(workersCount int, sso *storageSearchOptions, qs
 				bswb.bsws = bswb.bsws[:0]
 				putBlockSearchWorkBatch(bswb)
 			}
+
 			putBlockSearch(bs)
 			putBitmap(bm)
 			qs.UpdateAtomic(qsLocal)
+
 		}(uint(workerID))
 	}
 
@@ -1291,9 +1310,6 @@ func (s *Storage) searchParallel(workersCount int, sso *storageSearchOptions, qs
 	}
 	s.partitionsLock.Unlock()
 
-	// Obtain common filterStream from f
-	sf, f := getCommonStreamFilter(sso.filter)
-
 	// Schedule concurrent search across matching partitions.
 	psfs := make([]partitionSearchFinalizer, len(ptws))
 	var wgSearchers sync.WaitGroup
@@ -1303,7 +1319,7 @@ func (s *Storage) searchParallel(workersCount int, sso *storageSearchOptions, qs
 		go func(idx int, pt *partition) {
 			qsLocal := &QueryStats{}
 
-			psfs[idx] = pt.search(sf, f, sso, qsLocal, workCh, stopCh)
+			psfs[idx] = pt.search(sso, qsLocal, workCh, stopCh)
 
 			qs.UpdateAtomic(qsLocal)
 
@@ -1335,16 +1351,22 @@ var partitionSearchConcurrencyLimitCh = make(chan struct{}, cgroup.AvailableCPUs
 
 type partitionSearchFinalizer func()
 
-func (pt *partition) search(sf *StreamFilter, f filter, sso *storageSearchOptions, qs *QueryStats, workCh chan<- *blockSearchWorkBatch, stopCh <-chan struct{}) partitionSearchFinalizer {
+func (pt *partition) search(sso *storageSearchOptions, qs *QueryStats, workCh chan<- *blockSearchWorkBatch, stopCh <-chan struct{}) partitionSearchFinalizer {
 	if needStop(stopCh) {
 		// Do not spend CPU time on search, since it is already stopped.
 		return func() {}
 	}
 
+	pso := pt.getSearchOptions(sso)
+	return pt.ddb.search(pso, qs, workCh, stopCh)
+}
+
+func (pt *partition) getSearchOptions(sso *storageSearchOptions) *partitionSearchOptions {
 	tenantIDs := sso.tenantIDs
 	var streamIDs []streamID
-	if sf != nil {
-		streamIDs = pt.idb.searchStreamIDs(tenantIDs, sf)
+
+	if sso.streamFilter != nil {
+		streamIDs = pt.idb.searchStreamIDs(tenantIDs, sso.streamFilter)
 		if len(sso.streamIDs) > 0 {
 			streamIDs = intersectStreamIDs(streamIDs, sso.streamIDs)
 		}
@@ -1353,10 +1375,12 @@ func (pt *partition) search(sf *StreamFilter, f filter, sso *storageSearchOption
 		streamIDs = getStreamIDsForTenantIDs(sso.streamIDs, tenantIDs)
 		tenantIDs = nil
 	}
+
+	f := sso.filter
 	if hasStreamFilters(f) {
 		f = initStreamFilters(sso.tenantIDs, pt.idb, f)
 	}
-	soInternal := &partitionSearchOptions{
+	return &partitionSearchOptions{
 		tenantIDs:    tenantIDs,
 		streamIDs:    streamIDs,
 		minTimestamp: sso.minTimestamp,
@@ -1364,7 +1388,6 @@ func (pt *partition) search(sf *StreamFilter, f filter, sso *storageSearchOption
 		filter:       f,
 		fieldsFilter: sso.fieldsFilter,
 	}
-	return pt.ddb.search(soInternal, qs, workCh, stopCh)
 }
 
 func intersectStreamIDs(a, b []streamID) []streamID {
