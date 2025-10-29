@@ -639,6 +639,10 @@ Pass `-help` to VictoriaLogs in order to see the list of supported command-line 
         Whether to log all the ingested log entries; this can be useful for debugging of data ingestion; see https://docs.victoriametrics.com/victorialogs/data-ingestion/ ; see also -logNewStreams
   -logNewStreams
         Whether to log creation of new streams; this can be useful for debugging of high cardinality issues with log streams; see https://docs.victoriametrics.com/victorialogs/keyconcepts/#stream-fields ; see also -logIngestedRows
+  -logNewStreamsAuthKey value
+        authKey, which must be passed in query string to /internal/log_new_streams . It overrides -httpAuth.* . See https://docs.victoriametrics.com/victorialogs/#logging-new-streams
+        Flag value can be read from the given file when using -logNewStreamsAuthKey=file:///abs/path/to/file or -logNewStreamsAuthKey=file://./relative/path/to/file.
+        Flag value can be read from the given http/https url when using -logNewStreamsAuthKey=http://host/path or -logNewStreamsAuthKey=https://host/path
   -loggerDisableTimestamps
         Whether to disable writing timestamps in logs
   -loggerErrorsPerSecondLimit int
@@ -662,6 +666,9 @@ Pass `-help` to VictoriaLogs in order to see the list of supported command-line 
   -loki.maxRequestSize size
         The maximum size in bytes of a single Loki request
         Supports the following optional suffixes for size values: KB, MB, GB, TB, KiB, MiB, GiB, TiB (default 67108864)
+  -maxBackfillAge value
+        Log entries with timestamps older than now-maxBackfillAge are rejected during data ingestion; see https://docs.victoriametrics.com/victorialogs/#backfilling
+        The following optional suffixes are supported: s (second), h (hour), d (day), w (week), y (year). If suffix isn't set, then the duration is counted in months (default 0)
   -maxConcurrentInserts int
         The maximum number of concurrent insert requests. Set higher value when clients send data over slow networks. Default value depends on the number of available CPU cores. It should work fine in most cases since it minimizes resource usage. See also -insert.maxQueueDuration (default 32)
   -memory.allowedBytes size
@@ -724,8 +731,9 @@ Pass `-help` to VictoriaLogs in order to see the list of supported command-line 
         The maximum number of concurrent search requests. It shouldn't be high, since a single request can saturate all the CPU cores, while many concurrently executed requests may require high amounts of memory. See also -search.maxQueueDuration (default 16)
   -search.maxQueryDuration duration
         The maximum duration for query execution. It can be overridden to a smaller value on a per-query basis via 'timeout' query arg (default 30s)
-  -search.maxQueryTimeRange duration
+  -search.maxQueryTimeRange value
         The maximum time range, which can be set in the query sent to querying APIs. Queries with bigger time ranges are rejected. See https://docs.victoriametrics.com/victorialogs/querying/#resource-usage-limits
+        The following unit suffixes are required: s (second), m (minute), h (hour), d (day), w (week), y (year). Bare numbers without units are not allowed (except 0) (default 0)
   -search.maxQueueDuration duration
         The maximum time the search request waits for execution when -search.maxConcurrentRequests limit is reached; see also -search.maxQueryDuration (default 10s)
   -select.disable
