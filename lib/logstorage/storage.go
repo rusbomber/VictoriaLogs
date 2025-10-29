@@ -142,7 +142,7 @@ type Storage struct {
 	minFreeDiskSpaceBytes uint64
 
 	// logNewStreams instructs to log new streams if it is set to true
-	logNewStreams bool
+	logNewStreams atomic.Bool
 
 	// logIngestedRows instructs to log all the ingested log entries if it is set to true
 	logIngestedRows bool
@@ -357,6 +357,28 @@ func (s *Storage) PartitionSnapshotList() []string {
 	return snapshotPaths
 }
 
+// EnableLogNewStreams enables logging newly ingested streams during the given number of seconds
+func (s *Storage) EnableLogNewStreams(seconds int) {
+	if seconds <= 0 {
+		// Do nothing.
+		return
+	}
+
+	vPrev := s.logNewStreams.Swap(true)
+	if vPrev {
+		logger.Infof("logging of new streams is already enabled")
+		return
+	}
+
+	logger.Infof("enabled logging of new streams for %d seconds", seconds)
+
+	d := time.Second * time.Duration(seconds)
+	time.AfterFunc(d, func() {
+		s.logNewStreams.Swap(false)
+		logger.Infof("disabled logging of new streams")
+	})
+}
+
 type partitionWrapper struct {
 	// refCount is the number of active references to partition.
 	// When it reaches zero, then the partition is closed.
@@ -483,7 +505,6 @@ func MustOpenStorage(path string, cfg *StorageConfig) *Storage {
 		futureRetention:        futureRetention,
 		maxBackfillAge:         maxBackfillAge,
 		minFreeDiskSpaceBytes:  minFreeDiskSpaceBytes,
-		logNewStreams:          cfg.LogNewStreams,
 		logIngestedRows:        cfg.LogIngestedRows,
 		flockF:                 flockF,
 		stopCh:                 make(chan struct{}),
@@ -491,6 +512,7 @@ func MustOpenStorage(path string, cfg *StorageConfig) *Storage {
 		streamIDCache:     streamIDCache,
 		filterStreamCache: filterStreamCache,
 	}
+	s.logNewStreams.Store(cfg.LogNewStreams)
 
 	partitionsPath := filepath.Join(path, partitionsDirname)
 	fs.MustMkdirIfNotExist(partitionsPath)

@@ -255,6 +255,20 @@ This scheme can be implemented with the following simple cron job, which must ru
 All the VictoriaLogs instances with NVMe and HDD disks can be queried simultaneously via `vlselect` component of [VictoriaLogs cluster](https://docs.victoriametrics.com/victorialogs/cluster/),
 since [single-node VictoriaLogs instances can be a part of cluster](https://docs.victoriametrics.com/victorialogs/cluster/#single-node-and-cluster-mode-duality).
 
+## Logging new streams
+
+VictoriaLogs can log new [log streams](https://docs.victoriametrics.com/victorialogs/keyconcepts/#stream-fields) during [data ingestion](https://docs.victoriametrics.com/victorialogs/data-ingestion/).
+This is useful during the debugging of high cardinality or churn rate issues for the ingested log streams.
+This functionality can be enabled either on a permanent basis via `-logNewStreams` command-line flag or temporarily for the given number of seconds
+by sending HTTP request to `http://victoria-logs:9428/internal/log_new_streams?seconds=secs`. For example, the following command enables temporary logging
+of new log streams for 10 seconds:
+
+```
+curl http://victoria-logs:9428/internal/log_new_streams?seconds=10
+```
+
+See also [data ingestion troubleshooting](https://docs.victoriametrics.com/victorialogs/data-ingestion/#troubleshooting).
+
 ## Forced merge
 
 VictoriaLogs performs data compactions in background in order to keep good performance characteristics when accepting new data.
@@ -402,6 +416,7 @@ or similar authorization proxies. See [Security and Load balancing docs](https:/
 
 It is recommended protecting internal HTTP endpoints from unauthorized access:
 
+- [`/internal/log_new_streams`](https://docs.victoriametrics.com/victorialogs/#logging-new-streams) - via `-logNewStreamsAuthKey` [command-line flag](https://docs.victoriametrics.com/victorialogs/#list-of-command-line-flags).
 - [`/internal/force_flush`](https://docs.victoriametrics.com/victorialogs/#forced-flush) - via `-forceFlushAuthKey` [command-line flag](https://docs.victoriametrics.com/victorialogs/#list-of-command-line-flags).
 - [`/internal/force_merge`](https://docs.victoriametrics.com/victorialogs/#forced-merge) - via `-forceMergeAuthKey` [command-line flag](https://docs.victoriametrics.com/victorialogs/#list-of-command-line-flags).
 - [`/internal/partition/*`](https://docs.victoriametrics.com/victorialogs/#partitions-lifecycle) - via `-partitionManageAuthKey` [command-line flag](https://docs.victoriametrics.com/victorialogs/#list-of-command-line-flags).

@@ -22,6 +22,7 @@ according to [these docs](https://docs.victoriametrics.com/victorialogs/quicksta
 * SECURITY: upgrade base docker image (Alpine) from 3.22.1 to 3.22.2. See [Alpine 3.22.2 release notes](https://www.alpinelinux.org/posts/Alpine-3.19.9-3.20.8-3.21.5-3.22.2-released.html).
 
 * FEATURE: add an ability to limit the age of the accepted logs via `-maxBackfillAge` command-line flag. See [these docs](https://docs.victoriametrics.com/victorialogs/logsql/#backfilling).
+* FEATURE: add an ability to temporarily enable logging of newly ingested [log streams](https://docs.victoriametrics.com/victorialogs/keyconcepts/#stream-fields) during the given number of seconds. See [these docs](https://docs.victoriametrics.com/victorialogs/#logging-new-streams).
 * FEATURE: [web UI](https://docs.victoriametrics.com/victorialogs/querying/#web-ui): add Overview page for quick log characteristic inspection. See [#516](https://github.com/VictoriaMetrics/VictoriaLogs/issues/516).
 * FEATURE: [web UI](https://docs.victoriametrics.com/victorialogs/querying/#web-ui): allows grouping hits graph by any field with configurable top-N. See [#110](https://github.com/VictoriaMetrics/VictoriaLogs/issues/110).
 * FEATURE: [web UI](https://docs.victoriametrics.com/victorialogs/querying/#web-ui): add an option to download all logs without limit in `.jsonl` format. See [#627](https://github.com/VictoriaMetrics/VictoriaLogs/issues/627).
