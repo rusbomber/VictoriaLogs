@@ -604,20 +604,7 @@ func (bs *blockSearch) getStreamStrSlow() string {
 	bb := bbPool.Get()
 	defer bbPool.Put(bb)
 
-	bb.B = bs.bsw.p.pt.idb.appendStreamTagsByStreamID(bb.B[:0], &bs.bsw.bh.streamID)
-	if len(bb.B) == 0 {
-		// Couldn't find stream tags by sid. This may be the case when the corresponding log stream
-		// was recently registered and its tags aren't visible to search yet.
-		// The stream tags must become visible in a few seconds.
-		// See https://github.com/VictoriaMetrics/VictoriaMetrics/issues/6042
-		return ""
-	}
-
-	st := GetStreamTags()
-	streamTagsCanonical := bytesutil.ToUnsafeString(bb.B)
-	mustUnmarshalStreamTags(st, streamTagsCanonical)
-	bb.B = st.marshalString(bb.B[:0])
-	PutStreamTags(st)
+	bb.B = bs.bsw.p.pt.idb.appendStreamString(bb.B[:0], &bs.bsw.bh.streamID)
 
 	return string(bb.B)
 }
