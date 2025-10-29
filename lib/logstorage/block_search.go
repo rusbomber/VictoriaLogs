@@ -19,8 +19,8 @@ type blockSearchWork struct {
 	// p is the part where the block belongs to.
 	p *part
 
-	// so contains search options for the block search.
-	so *searchOptions
+	// pso contains search options for the block search.
+	pso *partitionSearchOptions
 
 	// bh is the header of the block to search.
 	bh blockHeader
@@ -28,7 +28,7 @@ type blockSearchWork struct {
 
 func (bsw *blockSearchWork) reset() {
 	bsw.p = nil
-	bsw.so = nil
+	bsw.pso = nil
 	bsw.bh.reset()
 }
 
@@ -61,12 +61,12 @@ func putBlockSearchWorkBatch(bswb *blockSearchWorkBatch) {
 
 var blockSearchWorkBatchPool sync.Pool
 
-func (bswb *blockSearchWorkBatch) appendBlockSearchWork(p *part, so *searchOptions, bh *blockHeader) bool {
+func (bswb *blockSearchWorkBatch) appendBlockSearchWork(p *part, pso *partitionSearchOptions, bh *blockHeader) bool {
 	bsws := bswb.bsws
 
 	bsws = append(bsws, blockSearchWork{
-		p:  p,
-		so: so,
+		p:   p,
+		pso: pso,
 	})
 	bsw := &bsws[len(bsws)-1]
 	bsw.bh.copyFrom(bh)
@@ -217,7 +217,7 @@ func (bs *blockSearch) search(qs *QueryStats, bsw *blockSearchWork, bm *bitmap) 
 	// search rows matching the given filter
 	bm.init(int(bsw.bh.rowsCount))
 	bm.setBits()
-	bs.bsw.so.filter.applyToBlockSearch(bs, bm)
+	bs.bsw.pso.filter.applyToBlockSearch(bs, bm)
 
 	if bm.isZero() {
 		// The filter doesn't match any logs in the current block.
@@ -227,7 +227,7 @@ func (bs *blockSearch) search(qs *QueryStats, bsw *blockSearchWork, bm *bitmap) 
 	bs.br.mustInit(bs, bm)
 
 	// fetch the requested columns to bs.br.
-	bs.br.initColumns(bsw.so.fieldsFilter)
+	bs.br.initColumns(bsw.pso.fieldsFilter)
 }
 
 func (bs *blockSearch) partFormatVersion() uint {

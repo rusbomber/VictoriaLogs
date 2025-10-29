@@ -87,8 +87,8 @@ func newQueryContext(ctx context.Context, qs *QueryStats, tenantIDs []TenantID, 
 	}
 }
 
-// genericSearchOptions contain options used for search.
-type genericSearchOptions struct {
+// storageSearchOptions contain options used for search in the Storage.
+type storageSearchOptions struct {
 	// tenantIDs must contain the list of tenantIDs for the search.
 	tenantIDs []TenantID
 
@@ -112,7 +112,8 @@ type genericSearchOptions struct {
 	timeOffset int64
 }
 
-type searchOptions struct {
+// partitionSearchOptions is search options for the partition.
+type partitionSearchOptions struct {
 	// Optional sorted list of tenantIDs for the search.
 	// If it is empty, then the search is performed by streamIDs
 	tenantIDs []TenantID
@@ -193,7 +194,7 @@ func (s *Storage) runQuery(qctx *QueryContext, writeBlock writeBlockResultFunc) 
 	minTimestamp, maxTimestamp := q.GetFilterTimeRange()
 	fieldsFilter := getNeededColumns(q.pipes)
 
-	so := &genericSearchOptions{
+	sso := &storageSearchOptions{
 		tenantIDs:    qctx.TenantIDs,
 		streamIDs:    streamIDs,
 		minTimestamp: minTimestamp,
@@ -205,7 +206,7 @@ func (s *Storage) runQuery(qctx *QueryContext, writeBlock writeBlockResultFunc) 
 
 	search := func(stopCh <-chan struct{}, writeBlockToPipes writeBlockResultFunc) error {
 		workersCount := q.GetParallelReaders(s.defaultParallelReaders)
-		s.searchParallel(workersCount, so, qctx.QueryStats, stopCh, writeBlockToPipes)
+		s.searchParallel(workersCount, sso, qctx.QueryStats, stopCh, writeBlockToPipes)
 		return nil
 	}
 
@@ -1220,10 +1221,10 @@ func (db *DataBlock) initFromBlockResult(br *blockResult) {
 	}
 }
 
-// search searches for the matching rows according to so.
+// search searches for the matching rows according to sso.
 //
 // It uses workersCount parallel workers for the search and calls writeBlock for each matching block.
-func (s *Storage) searchParallel(workersCount int, so *genericSearchOptions, qs *QueryStats, stopCh <-chan struct{}, writeBlock writeBlockResultFunc) {
+func (s *Storage) searchParallel(workersCount int, sso *storageSearchOptions, qs *QueryStats, stopCh <-chan struct{}, writeBlock writeBlockResultFunc) {
 	// spin up workers
 	var wg sync.WaitGroup
 	workCh := make(chan *blockSearchWorkBatch, workersCount)
@@ -1248,8 +1249,8 @@ func (s *Storage) searchParallel(workersCount int, so *genericSearchOptions, qs 
 
 					bs.search(qsLocal, bsw, bm)
 					if bs.br.rowsLen > 0 {
-						if so.timeOffset != 0 {
-							bs.subTimeOffsetToTimestamps(so.timeOffset)
+						if sso.timeOffset != 0 {
+							bs.subTimeOffsetToTimestamps(sso.timeOffset)
 						}
 						writeBlock(workerID, &bs.br)
 					}
@@ -1271,12 +1272,12 @@ func (s *Storage) searchParallel(workersCount int, so *genericSearchOptions, qs 
 	// Select partitions according to the selected time range
 	s.partitionsLock.Lock()
 	ptws := s.partitions
-	minDay := so.minTimestamp / nsecsPerDay
+	minDay := sso.minTimestamp / nsecsPerDay
 	n := sort.Search(len(ptws), func(i int) bool {
 		return ptws[i].day >= minDay
 	})
 	ptws = ptws[n:]
-	maxDay := so.maxTimestamp / nsecsPerDay
+	maxDay := sso.maxTimestamp / nsecsPerDay
 	n = sort.Search(len(ptws), func(i int) bool {
 		return ptws[i].day > maxDay
 	})
@@ -1291,7 +1292,7 @@ func (s *Storage) searchParallel(workersCount int, so *genericSearchOptions, qs 
 	s.partitionsLock.Unlock()
 
 	// Obtain common filterStream from f
-	sf, f := getCommonStreamFilter(so.filter)
+	sf, f := getCommonStreamFilter(sso.filter)
 
 	// Schedule concurrent search across matching partitions.
 	psfs := make([]partitionSearchFinalizer, len(ptws))
@@ -1302,7 +1303,7 @@ func (s *Storage) searchParallel(workersCount int, so *genericSearchOptions, qs 
 		go func(idx int, pt *partition) {
 			qsLocal := &QueryStats{}
 
-			psfs[idx] = pt.search(sf, f, so, qsLocal, workCh, stopCh)
+			psfs[idx] = pt.search(sf, f, sso, qsLocal, workCh, stopCh)
 
 			qs.UpdateAtomic(qsLocal)
 
@@ -1334,34 +1335,34 @@ var partitionSearchConcurrencyLimitCh = make(chan struct{}, cgroup.AvailableCPUs
 
 type partitionSearchFinalizer func()
 
-func (pt *partition) search(sf *StreamFilter, f filter, so *genericSearchOptions, qs *QueryStats, workCh chan<- *blockSearchWorkBatch, stopCh <-chan struct{}) partitionSearchFinalizer {
+func (pt *partition) search(sf *StreamFilter, f filter, sso *storageSearchOptions, qs *QueryStats, workCh chan<- *blockSearchWorkBatch, stopCh <-chan struct{}) partitionSearchFinalizer {
 	if needStop(stopCh) {
 		// Do not spend CPU time on search, since it is already stopped.
 		return func() {}
 	}
 
-	tenantIDs := so.tenantIDs
+	tenantIDs := sso.tenantIDs
 	var streamIDs []streamID
 	if sf != nil {
 		streamIDs = pt.idb.searchStreamIDs(tenantIDs, sf)
-		if len(so.streamIDs) > 0 {
-			streamIDs = intersectStreamIDs(streamIDs, so.streamIDs)
+		if len(sso.streamIDs) > 0 {
+			streamIDs = intersectStreamIDs(streamIDs, sso.streamIDs)
 		}
 		tenantIDs = nil
-	} else if len(so.streamIDs) > 0 {
-		streamIDs = getStreamIDsForTenantIDs(so.streamIDs, tenantIDs)
+	} else if len(sso.streamIDs) > 0 {
+		streamIDs = getStreamIDsForTenantIDs(sso.streamIDs, tenantIDs)
 		tenantIDs = nil
 	}
 	if hasStreamFilters(f) {
-		f = initStreamFilters(so.tenantIDs, pt.idb, f)
+		f = initStreamFilters(sso.tenantIDs, pt.idb, f)
 	}
-	soInternal := &searchOptions{
+	soInternal := &partitionSearchOptions{
 		tenantIDs:    tenantIDs,
 		streamIDs:    streamIDs,
-		minTimestamp: so.minTimestamp,
-		maxTimestamp: so.maxTimestamp,
+		minTimestamp: sso.minTimestamp,
+		maxTimestamp: sso.maxTimestamp,
 		filter:       f,
-		fieldsFilter: so.fieldsFilter,
+		fieldsFilter: sso.fieldsFilter,
 	}
 	return pt.ddb.search(soInternal, qs, workCh, stopCh)
 }
@@ -1425,12 +1426,12 @@ func initStreamFilters(tenantIDs []TenantID, idb *indexdb, f filter) filter {
 	return f
 }
 
-func (ddb *datadb) search(so *searchOptions, qs *QueryStats, workCh chan<- *blockSearchWorkBatch, stopCh <-chan struct{}) partitionSearchFinalizer {
+func (ddb *datadb) search(pso *partitionSearchOptions, qs *QueryStats, workCh chan<- *blockSearchWorkBatch, stopCh <-chan struct{}) partitionSearchFinalizer {
 	// Select parts with data for the given time range
 	ddb.partsLock.Lock()
-	pws := appendPartsInTimeRange(nil, ddb.bigParts, so.minTimestamp, so.maxTimestamp)
-	pws = appendPartsInTimeRange(pws, ddb.smallParts, so.minTimestamp, so.maxTimestamp)
-	pws = appendPartsInTimeRange(pws, ddb.inmemoryParts, so.minTimestamp, so.maxTimestamp)
+	pws := appendPartsInTimeRange(nil, ddb.bigParts, pso.minTimestamp, pso.maxTimestamp)
+	pws = appendPartsInTimeRange(pws, ddb.smallParts, pso.minTimestamp, pso.maxTimestamp)
+	pws = appendPartsInTimeRange(pws, ddb.inmemoryParts, pso.minTimestamp, pso.maxTimestamp)
 
 	// Increase references to the searched parts, so they aren't deleted during search.
 	// References to the searched parts must be decremented by calling the returned partitionSearchFinalizer.
@@ -1441,7 +1442,7 @@ func (ddb *datadb) search(so *searchOptions, qs *QueryStats, workCh chan<- *bloc
 
 	// Apply search to matching parts
 	for _, pw := range pws {
-		pw.p.search(so, qs, workCh, stopCh)
+		pw.p.search(pso, qs, workCh, stopCh)
 	}
 
 	return func() {
@@ -1451,12 +1452,12 @@ func (ddb *datadb) search(so *searchOptions, qs *QueryStats, workCh chan<- *bloc
 	}
 }
 
-func (p *part) search(so *searchOptions, qs *QueryStats, workCh chan<- *blockSearchWorkBatch, stopCh <-chan struct{}) {
+func (p *part) search(pso *partitionSearchOptions, qs *QueryStats, workCh chan<- *blockSearchWorkBatch, stopCh <-chan struct{}) {
 	bhss := getBlockHeaders()
-	if len(so.tenantIDs) > 0 {
-		p.searchByTenantIDs(so, qs, bhss, workCh, stopCh)
+	if len(pso.tenantIDs) > 0 {
+		p.searchByTenantIDs(pso, qs, bhss, workCh, stopCh)
 	} else {
-		p.searchByStreamIDs(so, qs, bhss, workCh, stopCh)
+		p.searchByStreamIDs(pso, qs, bhss, workCh, stopCh)
 	}
 	putBlockHeaders(bhss)
 }
@@ -1488,13 +1489,13 @@ func (bhss *blockHeaders) reset() {
 	bhss.bhs = bhs[:0]
 }
 
-func (p *part) searchByTenantIDs(so *searchOptions, qs *QueryStats, bhss *blockHeaders, workCh chan<- *blockSearchWorkBatch, stopCh <-chan struct{}) {
+func (p *part) searchByTenantIDs(pso *partitionSearchOptions, qs *QueryStats, bhss *blockHeaders, workCh chan<- *blockSearchWorkBatch, stopCh <-chan struct{}) {
 	// it is assumed that tenantIDs are sorted
-	tenantIDs := so.tenantIDs
+	tenantIDs := pso.tenantIDs
 
 	bswb := getBlockSearchWorkBatch()
 	scheduleBlockSearch := func(bh *blockHeader) bool {
-		if bswb.appendBlockSearchWork(p, so, bh) {
+		if bswb.appendBlockSearchWork(p, pso, bh) {
 			return true
 		}
 		select {
@@ -1540,7 +1541,7 @@ func (p *part) searchByTenantIDs(so *searchOptions, qs *QueryStats, bhss *blockH
 		ibh := &ibhs[n]
 		ibhs = ibhs[n+1:]
 
-		if so.minTimestamp > ibh.maxTimestamp || so.maxTimestamp < ibh.minTimestamp {
+		if pso.minTimestamp > ibh.maxTimestamp || pso.maxTimestamp < ibh.minTimestamp {
 			// Skip the ibh, since it doesn't contain entries on the requested time range
 			continue
 		}
@@ -1558,7 +1559,7 @@ func (p *part) searchByTenantIDs(so *searchOptions, qs *QueryStats, bhss *blockH
 				bh := &bhs[0]
 				bhs = bhs[1:]
 				th := &bh.timestampsHeader
-				if so.minTimestamp > th.maxTimestamp || so.maxTimestamp < th.minTimestamp {
+				if pso.minTimestamp > th.maxTimestamp || pso.maxTimestamp < th.minTimestamp {
 					continue
 				}
 				if !scheduleBlockSearch(bh) {
@@ -1590,13 +1591,13 @@ func (p *part) searchByTenantIDs(so *searchOptions, qs *QueryStats, bhss *blockH
 	}
 }
 
-func (p *part) searchByStreamIDs(so *searchOptions, qs *QueryStats, bhss *blockHeaders, workCh chan<- *blockSearchWorkBatch, stopCh <-chan struct{}) {
+func (p *part) searchByStreamIDs(pso *partitionSearchOptions, qs *QueryStats, bhss *blockHeaders, workCh chan<- *blockSearchWorkBatch, stopCh <-chan struct{}) {
 	// it is assumed that streamIDs are sorted
-	streamIDs := so.streamIDs
+	streamIDs := pso.streamIDs
 
 	bswb := getBlockSearchWorkBatch()
 	scheduleBlockSearch := func(bh *blockHeader) bool {
-		if bswb.appendBlockSearchWork(p, so, bh) {
+		if bswb.appendBlockSearchWork(p, pso, bh) {
 			return true
 		}
 		select {
@@ -1643,7 +1644,7 @@ func (p *part) searchByStreamIDs(so *searchOptions, qs *QueryStats, bhss *blockH
 		ibh := &ibhs[n]
 		ibhs = ibhs[n+1:]
 
-		if so.minTimestamp > ibh.maxTimestamp || so.maxTimestamp < ibh.minTimestamp {
+		if pso.minTimestamp > ibh.maxTimestamp || pso.maxTimestamp < ibh.minTimestamp {
 			// Skip the ibh, since it doesn't contain entries on the requested time range
 			continue
 		}
@@ -1661,7 +1662,7 @@ func (p *part) searchByStreamIDs(so *searchOptions, qs *QueryStats, bhss *blockH
 				bh := &bhs[0]
 				bhs = bhs[1:]
 				th := &bh.timestampsHeader
-				if so.minTimestamp > th.maxTimestamp || so.maxTimestamp < th.minTimestamp {
+				if pso.minTimestamp > th.maxTimestamp || pso.maxTimestamp < th.minTimestamp {
 					continue
 				}
 				if !scheduleBlockSearch(bh) {
