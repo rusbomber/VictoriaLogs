@@ -87,9 +87,6 @@ vlagent-linux-ppc64le:
 vlagent-linux-s390x:
 	APP_NAME=vlagent CGO_ENABLED=0 GOOS=linux GOARCH=s390x $(MAKE) app-local-goos-goarch
 
-vlagent-linux-s390x:
-	APP_NAME=vlagent CGO_ENABLED=0 GOOS=linux GOARCH=s390x $(MAKE) app-local-goos-goarch
-
 vlagent-linux-loong64:
 	APP_NAME=vlagent CGO_ENABLED=0 GOOS=linux GOARCH=loong64 $(MAKE) app-local-goos-goarch
 
