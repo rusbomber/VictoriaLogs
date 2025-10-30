@@ -24,6 +24,9 @@ vlagent-linux-arm64-prod:
 vlagent-linux-ppc64le-prod:
 	APP_NAME=vlagent $(MAKE) app-via-docker-linux-ppc64le
 
+vlagent-linux-s390x-prod:
+	APP_NAME=vlagent $(MAKE) app-via-docker-linux-s390x
+
 vlagent-linux-386-prod:
 	APP_NAME=vlagent $(MAKE) app-via-docker-linux-386
 
@@ -60,6 +63,9 @@ package-vlagent-arm64:
 package-vlagent-ppc64le:
 	APP_NAME=vlagent $(MAKE) package-via-docker-ppc64le
 
+package-vlagent-s390x:
+	APP_NAME=vlagent $(MAKE) package-via-docker-s390x
+
 package-vlagent-386:
 	APP_NAME=vlagent $(MAKE) package-via-docker-386
 
@@ -77,6 +83,9 @@ vlagent-linux-arm64:
 
 vlagent-linux-ppc64le:
 	APP_NAME=vlagent CGO_ENABLED=0 GOOS=linux GOARCH=ppc64le $(MAKE) app-local-goos-goarch
+
+vlagent-linux-s390x:
+	APP_NAME=vlagent CGO_ENABLED=0 GOOS=linux GOARCH=s390x $(MAKE) app-local-goos-goarch
 
 vlagent-linux-s390x:
 	APP_NAME=vlagent CGO_ENABLED=0 GOOS=linux GOARCH=s390x $(MAKE) app-local-goos-goarch

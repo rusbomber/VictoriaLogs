@@ -24,6 +24,9 @@ vlogscli-linux-arm64-prod:
 vlogscli-linux-ppc64le-prod:
 	APP_NAME=vlogscli $(MAKE) app-via-docker-linux-ppc64le
 
+vlogscli-linux-s390x-prod:
+	APP_NAME=vlogscli $(MAKE) app-via-docker-linux-s390x
+
 vlogscli-linux-386-prod:
 	APP_NAME=vlogscli $(MAKE) app-via-docker-linux-386
 
@@ -60,6 +63,9 @@ package-vlogscli-arm64:
 package-vlogscli-ppc64le:
 	APP_NAME=vlogscli $(MAKE) package-via-docker-ppc64le
 
+package-vlogscli-s390x:
+	APP_NAME=vlogscli $(MAKE) package-via-docker-s390x
+
 package-vlogscli-386:
 	APP_NAME=vlogscli $(MAKE) package-via-docker-386
 
@@ -77,6 +83,9 @@ vlogscli-linux-arm64:
 
 vlogscli-linux-ppc64le:
 	APP_NAME=vlogscli CGO_ENABLED=0 GOOS=linux GOARCH=ppc64le $(MAKE) app-local-goos-goarch
+
+vlogscli-linux-s390x:
+	APP_NAME=vlogscli CGO_ENABLED=0 GOOS=linux GOARCH=s390x $(MAKE) app-local-goos-goarch
 
 vlogscli-linux-s390x:
 	APP_NAME=vlogscli CGO_ENABLED=0 GOOS=linux GOARCH=s390x $(MAKE) app-local-goos-goarch

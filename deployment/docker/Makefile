@@ -144,6 +144,9 @@ app-via-docker-linux-arm:
 app-via-docker-linux-ppc64le:
 	CGO_ENABLED=0 GOOS=linux GOARCH=ppc64le $(MAKE) app-via-docker-goos-goarch
 
+app-via-docker-linux-s390x:
+	CGO_ENABLED=0 GOOS=linux GOARCH=s390x $(MAKE) app-via-docker-goos-goarch
+
 app-via-docker-linux-386:
 	CGO_ENABLED=0 GOOS=linux GOARCH=386 $(MAKE) app-via-docker-goos-goarch
 
@@ -186,6 +189,9 @@ package-via-docker-arm:
 
 package-via-docker-ppc64le:
 	CGO_ENABLED=0 GOARCH=ppc64le $(MAKE) package-via-docker-goarch
+
+package-via-docker-s390x:
+	CGO_ENABLED=0 GOARCH=s390x $(MAKE) package-via-docker-goarch
 
 package-via-docker-386:
 	CGO_ENABLED=0 GOARCH=386 $(MAKE) package-via-docker-goarch
