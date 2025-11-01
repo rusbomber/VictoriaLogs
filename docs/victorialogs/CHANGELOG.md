@@ -18,6 +18,10 @@ according to [these docs](https://docs.victoriametrics.com/victorialogs/quicksta
 
 ## tip
 
+## [v1.37.1](https://github.com/VictoriaMetrics/VictoriaLogs/releases/tag/v1.37.1)
+
+Released at 2025-11-01
+
 * BUGFIX: fix the increased CPU usage during data ingestion. The issue has been introduced in [v1.37.0](https://github.com/VictoriaMetrics/VictoriaLogs/releases/tag/v1.37.0).
 * BUGFIX: [querying](https://docs.victoriametrics.com/victorialogs/querying/#live-tailing): fix `/select/logsql/tail` requests being rejected by `-search.maxQueryTimeRange` when the query relied on the tail window for the time filter. Live tailing now continues to work with that flag enabled. See [#760](https://github.com/VictoriaMetrics/VictoriaLogs/issues/760).
 * BUGFIX: [data ingestion](https://docs.victoriametrics.com/victorialogs/data-ingestion/#elasticsearch-bulk-api): Elasticsearch `_bulk` parse warnings now show the client address, request URI, and tail of the bad payload, so broken batches are easier to spot. See [#60](https://github.com/VictoriaMetrics/VictoriaLogs/issues/60).
