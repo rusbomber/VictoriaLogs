@@ -20,6 +20,10 @@ according to [these docs](https://docs.victoriametrics.com/victorialogs/quicksta
 
 * FEATURE: add an ability to delete stored logs. See [these docs](https://docs.victoriametrics.com/victorialogs/#how-to-delete-logs) and [#43](https://github.com/VictoriaMetrics/VictoriaLogs/issues/43). Thanks to @func25 for the initial idea and implementation at [#4](https://github.com/VictoriaMetrics/VictoriaLogs/pull/4).
 
+## [v1.37.2](https://github.com/VictoriaMetrics/VictoriaLogs/releases/tag/v1.37.2)
+
+Released at 2025-11-01
+
 * BUGFIX: fix panic `BUG: bsm.bd must be empty`, which can occur during data ingestion and background merging of already ingested logs. See [#792](https://github.com/VictoriaMetrics/VictoriaLogs/issues/792). The panic has been introduced in [v1.37.1](https://github.com/VictoriaMetrics/VictoriaLogs/releases/tag/v1.37.1).
 
 ## [v1.37.1](https://github.com/VictoriaMetrics/VictoriaLogs/releases/tag/v1.37.1)
