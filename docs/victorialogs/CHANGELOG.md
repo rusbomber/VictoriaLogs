@@ -18,6 +18,8 @@ according to [these docs](https://docs.victoriametrics.com/victorialogs/quicksta
 
 ## tip
 
+* BUGFIX: fix the increased CPU usage during data ingestion. The issue has been introduced in [v1.37.0](https://github.com/VictoriaMetrics/VictoriaLogs/releases/tag/v1.37.0).
+
 ## [v1.37.0](https://github.com/VictoriaMetrics/VictoriaLogs/releases/tag/v1.37.0)
 
 Released at 2025-10-30
