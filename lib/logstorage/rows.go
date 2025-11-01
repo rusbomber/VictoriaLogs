@@ -9,6 +9,8 @@ import (
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/encoding"
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/slicesutil"
 	"github.com/valyala/quicktemplate"
+
+	"github.com/VictoriaMetrics/VictoriaLogs/lib/prefixfilter"
 )
 
 // Field is a single field for the log entry.
@@ -261,6 +263,71 @@ func (rs *rows) mergeRows(timestampsA, timestampsB []int64, fieldsA, fieldsB [][
 	} else {
 		rs.appendRows(timestampsA, fieldsA)
 	}
+}
+
+func (rs *rows) skipRowsByDropFilter(dropFilter *partitionSearchOptions, dropFilterFields *prefixfilter.Filter, offset int, stream, streamID string) {
+	tmpFields := GetFields()
+	defer PutFields(tmpFields)
+
+	tmpFields.Fields = addFieldIfNeeded(tmpFields.Fields, dropFilterFields, "_stream", stream)
+	tmpFields.Fields = addFieldIfNeeded(tmpFields.Fields, dropFilterFields, "_stream_id", streamID)
+	tmpFieldsBaseLen := len(tmpFields.Fields)
+
+	dstTimestamps := rs.timestamps[:offset]
+	dstRows := rs.rows[:offset]
+
+	srcTimestamps := rs.timestamps[offset:]
+	srcRows := rs.rows[offset:]
+
+	bb := bbPool.Get()
+	for i := range srcTimestamps {
+		srcTimestamp := srcTimestamps[i]
+		srcFields := srcRows[i]
+
+		if srcTimestamp < dropFilter.minTimestamp || srcTimestamp > dropFilter.maxTimestamp {
+			// Fast path - keep row outsize the dropFilter time range
+			dstTimestamps = append(dstTimestamps, srcTimestamp)
+			dstRows = append(dstRows, srcFields)
+			continue
+		}
+
+		if dropFilterFields.MatchString("_time") {
+			bb.B = marshalTimestampISO8601String(bb.B[:0], srcTimestamp)
+			tmpFields.Fields = append(tmpFields.Fields, Field{
+				Name:  "_time",
+				Value: bytesutil.ToUnsafeString(bb.B),
+			})
+		}
+
+		for _, f := range srcFields {
+			tmpFields.Fields = addFieldIfNeeded(tmpFields.Fields, dropFilterFields, f.Name, f.Value)
+		}
+
+		if !dropFilter.filter.matchRow(tmpFields.Fields) {
+			dstTimestamps = append(dstTimestamps, srcTimestamp)
+			dstRows = append(dstRows, srcFields)
+		}
+
+		clear(tmpFields.Fields[tmpFieldsBaseLen:])
+		tmpFields.Fields = tmpFields.Fields[:tmpFieldsBaseLen]
+	}
+	bbPool.Put(bb)
+
+	rs.timestamps = dstTimestamps
+
+	clear(rs.rows[len(dstRows):])
+	rs.rows = dstRows
+}
+
+func addFieldIfNeeded(dst []Field, pf *prefixfilter.Filter, name, value string) []Field {
+	name = getCanonicalColumnName(name)
+	if pf.MatchString(name) {
+		dst = append(dst, Field{
+			Name:  name,
+			Value: value,
+		})
+	}
+	return dst
 }
 
 func sortFieldsByName(fields []Field) {

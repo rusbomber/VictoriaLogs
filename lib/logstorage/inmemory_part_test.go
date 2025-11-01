@@ -180,7 +180,7 @@ func TestInmemoryPartInitFromBlockStreamReaders(t *testing.T) {
 		mpDst := getInmemoryPart()
 		bsw := getBlockStreamWriter()
 		bsw.MustInitForInmemoryPart(mpDst)
-		mustMergeBlockStreams(&mpDst.ph, bsw, bsrs, nil)
+		mustMergeBlockStreams(&mpDst.ph, nil, bsw, bsrs, nil, nil)
 		putBlockStreamWriter(bsw)
 
 		// Check mpDst.ph stats

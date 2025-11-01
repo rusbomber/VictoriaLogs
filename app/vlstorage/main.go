@@ -1,6 +1,7 @@
 package vlstorage
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -529,6 +530,42 @@ func GetStreamIDs(qctx *logstorage.QueryContext, limit uint64) ([]logstorage.Val
 		return localStorage.GetStreamIDs(qctx, limit)
 	}
 	return netstorageSelect.GetStreamIDs(qctx, limit)
+}
+
+// DeleteRunTask starts deletion of logs for the given filter f for the given tenantIDs.
+//
+// The taskID and timestamp are tracked in the list of tasks returned by DeleteActiveTasks().
+func DeleteRunTask(ctx context.Context, taskID string, timestamp int64, tenantIDs []logstorage.TenantID, f *logstorage.Filter) error {
+	logger.Infof("starting deleting logs for task_id=%q, filter=%q, tenantIDs=%s", taskID, f, tenantIDs)
+
+	if localStorage != nil {
+		return localStorage.DeleteRunTask(ctx, taskID, timestamp, tenantIDs, f)
+	}
+	return netstorageSelect.DeleteRunTask(ctx, taskID, timestamp, tenantIDs, f)
+}
+
+// DeleteStopTask stops delete task with the given taskID.
+func DeleteStopTask(ctx context.Context, taskID string) error {
+	logger.Infof("stopping delete task with task_id=%q", taskID)
+
+	var err error
+	if localStorage != nil {
+		err = localStorage.DeleteStopTask(ctx, taskID)
+	} else {
+		err = netstorageSelect.DeleteStopTask(ctx, taskID)
+	}
+	if err == nil {
+		logger.Infof("the delete task with task_id=%q has been stopped", taskID)
+	}
+	return err
+}
+
+// DeleteActiveTasks returns a list of active deletion tasks started via DeleteRunTask().
+func DeleteActiveTasks(ctx context.Context) ([]*logstorage.DeleteTask, error) {
+	if localStorage != nil {
+		return localStorage.DeleteActiveTasks(ctx)
+	}
+	return netstorageSelect.DeleteActiveTasks(ctx)
 }
 
 func writeStorageMetrics(w io.Writer, strg *logstorage.Storage) {

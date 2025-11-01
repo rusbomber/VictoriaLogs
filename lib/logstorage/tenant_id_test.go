@@ -144,7 +144,7 @@ func TestParseTenantID(t *testing.T) {
 	f(":456", TenantID{ProjectID: 456})
 }
 
-func TestMarshalUnmarshalTenantIDs(t *testing.T) {
+func TestMarshalUnmarshalTenantIDsAsJSON(t *testing.T) {
 	tenantIDs := []TenantID{
 		{
 			AccountID: 0,
@@ -159,9 +159,9 @@ func TestMarshalUnmarshalTenantIDs(t *testing.T) {
 			ProjectID: 34242123,
 		},
 	}
-	data := MarshalTenantIDs(nil, tenantIDs)
+	data := MarshalTenantIDsToJSON(tenantIDs)
 
-	result, err := UnmarshalTenantIDs(data)
+	result, err := UnmarshalTenantIDsFromJSON(data)
 	if err != nil {
 		t.Fatalf("unexpected error when unmarshaling tenants: %s", err)
 	}

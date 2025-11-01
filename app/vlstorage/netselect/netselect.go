@@ -30,37 +30,52 @@ const (
 	// FieldNamesProtocolVersion is the version of the protocol used for /internal/select/field_names HTTP endpoint.
 	//
 	// It must be updated every time the protocol changes.
-	FieldNamesProtocolVersion = "v2"
+	FieldNamesProtocolVersion = "v3"
 
 	// FieldValuesProtocolVersion is the version of the protocol used for /internal/select/field_values HTTP endpoint.
 	//
 	// It must be updated every time the protocol changes.
-	FieldValuesProtocolVersion = "v2"
+	FieldValuesProtocolVersion = "v3"
 
 	// StreamFieldNamesProtocolVersion is the version of the protocol used for /internal/select/stream_field_names HTTP endpoint.
 	//
 	// It must be updated every time the protocol changes.
-	StreamFieldNamesProtocolVersion = "v2"
+	StreamFieldNamesProtocolVersion = "v3"
 
 	// StreamFieldValuesProtocolVersion is the version of the protocol used for /internal/select/stream_field_values HTTP endpoint.
 	//
 	// It must be updated every time the protocol changes.
-	StreamFieldValuesProtocolVersion = "v2"
+	StreamFieldValuesProtocolVersion = "v3"
 
 	// StreamsProtocolVersion is the version of the protocol used for /internal/select/streams HTTP endpoint.
 	//
 	// It must be updated every time the protocol changes.
-	StreamsProtocolVersion = "v2"
+	StreamsProtocolVersion = "v3"
 
 	// StreamIDsProtocolVersion is the version of the protocol used for /internal/select/stream_ids HTTP endpoint.
 	//
 	// It must be updated every time the protocol changes.
-	StreamIDsProtocolVersion = "v2"
+	StreamIDsProtocolVersion = "v3"
 
 	// QueryProtocolVersion is the version of the protocol used for /internal/select/query HTTP endpoint.
 	//
 	// It must be updated every time the protocol changes.
-	QueryProtocolVersion = "v2"
+	QueryProtocolVersion = "v3"
+
+	// DeleteRunTaskProtocolVersion is the version of the protocol used for /internal/delete/run_task HTTP endpoint.
+	//
+	// It must be updated every time the protocol changes.
+	DeleteRunTaskProtocolVersion = "v1"
+
+	// DeleteStopTaskProtocolVersion is the version of the protocol used for /internal/delete/stop_task HTTP endpoint.
+	//
+	// It must be updated every time the protocol changes.
+	DeleteStopTaskProtocolVersion = "v1"
+
+	// DeleteActiveTasksProtocolVersion is the version of the protocol used for /internal/delete/active_tasks endpoint.
+	//
+	// It must be updated every time the protocol changes.
+	DeleteActiveTasksProtocolVersion = "v1"
 )
 
 // Storage is a network storage for querying remote storage nodes in the cluster.
@@ -231,9 +246,11 @@ func (sn *storageNode) getStreamIDs(qctx *logstorage.QueryContext, limit uint64)
 }
 
 func (sn *storageNode) getCommonArgs(version string, qctx *logstorage.QueryContext) url.Values {
+	// ATTENTION: the *ProtocolVersion consts must be incremented every time the set of common args changes or its format changes.
+
 	args := url.Values{}
 	args.Set("version", version)
-	args.Set("tenant_ids", string(logstorage.MarshalTenantIDs(nil, qctx.TenantIDs)))
+	args.Set("tenant_ids", string(logstorage.MarshalTenantIDsToJSON(qctx.TenantIDs)))
 	args.Set("query", qctx.Query.String())
 	args.Set("timestamp", fmt.Sprintf("%d", qctx.Query.GetTimestamp()))
 	args.Set("disable_compression", fmt.Sprintf("%v", sn.s.disableCompression))
@@ -438,6 +455,114 @@ func (s *Storage) GetStreamIDs(qctx *logstorage.QueryContext, limit uint64) ([]l
 	})
 }
 
+// DeleteRunTask starts deletion of logs for the given filter f at the given tenantIDs.
+func (s *Storage) DeleteRunTask(ctx context.Context, taskID string, timestamp int64, tenantIDs []logstorage.TenantID, f *logstorage.Filter) error {
+	ctxWithCancel, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	errs := make([]error, len(s.sns))
+
+	// Return an error to the caller when at least a single storage node is unavailable.
+	// This improves awarenes of the caller about unavailable storage nodes.
+	// If some storage node is unavailable, then the deletetion task
+	// can start on arbitrary number of the remaining available nodes.
+	// It is OK to re-run the delete task in this case.
+	allowPartialResponse := false
+
+	var wg sync.WaitGroup
+	for i := range s.sns {
+		wg.Add(1)
+		go func(nodeIdx int) {
+			defer wg.Done()
+
+			sn := s.sns[nodeIdx]
+			err := sn.deleteRunTask(ctxWithCancel, taskID, timestamp, tenantIDs, f)
+			errs[nodeIdx] = sn.handleError(ctxWithCancel, cancel, err, allowPartialResponse)
+		}(i)
+	}
+	wg.Wait()
+
+	return getFirstError(errs, allowPartialResponse)
+}
+
+// DeleteStopTask stops the delete task with the given taskID.
+func (s *Storage) DeleteStopTask(ctx context.Context, taskID string) error {
+	ctxWithCancel, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	errs := make([]error, len(s.sns))
+
+	// Return an error to the caller when at least a single storage node is unavailable.
+	// This improves awarenes of the caller about unavailable storage nodes.
+	// If some storage node is unavailable, then the deletion task can remain uncanceled on such nodes.
+	// It is OK to stop the delete task multiple times in this case.
+	allowPartialResponse := false
+
+	var wg sync.WaitGroup
+	for i := range s.sns {
+		wg.Add(1)
+		go func(nodeIdx int) {
+			defer wg.Done()
+
+			sn := s.sns[nodeIdx]
+			err := sn.deleteStopTask(ctxWithCancel, taskID)
+			errs[nodeIdx] = sn.handleError(ctxWithCancel, cancel, err, allowPartialResponse)
+		}(i)
+	}
+	wg.Wait()
+
+	return getFirstError(errs, allowPartialResponse)
+}
+
+// DeleteActiveTasks returns the list of active delete tasks started via DeleteRunTask
+func (s *Storage) DeleteActiveTasks(ctx context.Context) ([]*logstorage.DeleteTask, error) {
+	ctxWithCancel, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	errs := make([]error, len(s.sns))
+	results := make([][]*logstorage.DeleteTask, len(s.sns))
+
+	// Return an error to the caller when at least a single storage node is unavailable,
+	// since this prevents from returning the full list of active delete tasks.
+	allowPartialResponse := false
+
+	var wg sync.WaitGroup
+	for i := range s.sns {
+		wg.Add(1)
+		go func(nodeIdx int) {
+			defer wg.Done()
+
+			sn := s.sns[nodeIdx]
+			tasks, err := sn.deleteActiveTasks(ctxWithCancel)
+			results[nodeIdx] = tasks
+			errs[nodeIdx] = sn.handleError(ctxWithCancel, cancel, err, allowPartialResponse)
+		}(i)
+	}
+	wg.Wait()
+
+	if err := getFirstError(errs, allowPartialResponse); err != nil {
+		return nil, err
+	}
+
+	// Merge tasks received from storage nodes.
+	m := make(map[string]*logstorage.DeleteTask)
+	for _, tasks := range results {
+		for _, dt := range tasks {
+			dst := m[dt.TaskID]
+			if dst == nil {
+				m[dt.TaskID] = dt
+			}
+		}
+	}
+
+	tasks := make([]*logstorage.DeleteTask, 0, len(m))
+	for _, t := range m {
+		tasks = append(tasks, t)
+	}
+
+	return tasks, nil
+}
+
 func (s *Storage) getValuesWithHits(qctx *logstorage.QueryContext, limit uint64, resetHitsOnLimitExceeded bool,
 	callback func(ctx context.Context, sn *storageNode) ([]logstorage.ValueWithHits, error)) ([]logstorage.ValueWithHits, error) {
 
@@ -468,6 +593,76 @@ func (s *Storage) getValuesWithHits(qctx *logstorage.QueryContext, limit uint64,
 	vhs := logstorage.MergeValuesWithHits(results, limit, resetHitsOnLimitExceeded)
 
 	return vhs, nil
+}
+
+func (sn *storageNode) deleteRunTask(ctx context.Context, taskID string, timestamp int64, tenantIDs []logstorage.TenantID, f *logstorage.Filter) error {
+	args := url.Values{}
+	args.Set("version", DeleteRunTaskProtocolVersion)
+	args.Set("task_id", taskID)
+	args.Set("timestamp", fmt.Sprintf("%d", timestamp))
+	args.Set("tenant_ids", string(logstorage.MarshalTenantIDsToJSON(tenantIDs)))
+	args.Set("filter", f.String())
+
+	path := "/internal/delete/run_task"
+	data, reqURL, err := sn.getPlainResponseBodyForPathAndArgs(ctx, path, args)
+	if err != nil {
+		return err
+	}
+	if len(data) > 0 {
+		return fmt.Errorf("unexpected response body received from %q: %q", reqURL, data)
+	}
+
+	return nil
+}
+
+func (sn *storageNode) deleteStopTask(ctx context.Context, taskID string) error {
+	args := url.Values{}
+	args.Set("version", DeleteStopTaskProtocolVersion)
+	args.Set("task_id", taskID)
+
+	path := "/internal/delete/stop_task"
+	data, reqURL, err := sn.getPlainResponseBodyForPathAndArgs(ctx, path, args)
+	if err != nil {
+		return err
+	}
+	if len(data) > 0 {
+		return fmt.Errorf("unexpected response body received from %q: %q", reqURL, data)
+	}
+
+	return nil
+}
+
+func (sn *storageNode) deleteActiveTasks(ctx context.Context) ([]*logstorage.DeleteTask, error) {
+	args := url.Values{}
+	args.Set("version", DeleteActiveTasksProtocolVersion)
+
+	path := "/internal/delete/active_tasks"
+	data, reqURL, err := sn.getPlainResponseBodyForPathAndArgs(ctx, path, args)
+	if err != nil {
+		return nil, err
+	}
+
+	tasks, err := logstorage.UnmarshalDeleteTasksFromJSON(data)
+	if err != nil {
+		return nil, fmt.Errorf("cannot parse response from %q: %w; response body: %q", reqURL, err, data)
+	}
+
+	return tasks, nil
+}
+
+func (sn *storageNode) getPlainResponseBodyForPathAndArgs(ctx context.Context, path string, args url.Values) ([]byte, string, error) {
+	responseBody, reqURL, err := sn.getResponseBodyForPathAndArgs(ctx, path, args)
+	if err != nil {
+		return nil, reqURL, err
+	}
+	defer responseBody.Close()
+
+	data, err := io.ReadAll(responseBody)
+	if err != nil {
+		return nil, reqURL, fmt.Errorf("cannot read response from %q: %w", reqURL, err)
+	}
+
+	return data, reqURL, nil
 }
 
 func (sn *storageNode) handleError(ctx context.Context, cancel func(), err error, allowPartialResponse bool) error {

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/atomicutil"
@@ -142,6 +143,17 @@ type partitionSearchOptions struct {
 
 	// fieldsFilter is the filter of fields to return in the result
 	fieldsFilter *prefixfilter.Filter
+}
+
+func (pso *partitionSearchOptions) matchStreamID(sid *streamID) bool {
+	if len(pso.tenantIDs) > 0 {
+		return slices.Contains(pso.tenantIDs, sid.tenantID)
+	}
+	return slices.Contains(pso.streamIDs, *sid)
+}
+
+func (pso *partitionSearchOptions) matchTimeRange(minTimestamp, maxTimestamp int64) bool {
+	return minTimestamp <= pso.maxTimestamp && maxTimestamp >= pso.minTimestamp
 }
 
 // WriteDataBlockFunc must process the db.
@@ -1289,26 +1301,8 @@ func (s *Storage) searchParallel(workersCount int, sso *storageSearchOptions, qs
 	}
 
 	// Select partitions according to the selected time range
-	s.partitionsLock.Lock()
-	ptws := s.partitions
-	minDay := sso.minTimestamp / nsecsPerDay
-	n := sort.Search(len(ptws), func(i int) bool {
-		return ptws[i].day >= minDay
-	})
-	ptws = ptws[n:]
-	maxDay := sso.maxTimestamp / nsecsPerDay
-	n = sort.Search(len(ptws), func(i int) bool {
-		return ptws[i].day > maxDay
-	})
-	ptws = ptws[:n]
-
-	// Copy the selected partitions, so they don't interfere with s.partitions.
-	ptws = append([]*partitionWrapper{}, ptws...)
-
-	for _, ptw := range ptws {
-		ptw.incRef()
-	}
-	s.partitionsLock.Unlock()
+	ptws, ptwsDecRef := s.getPartitionsForTimeRange(sso.minTimestamp, sso.maxTimestamp)
+	defer ptwsDecRef()
 
 	// Schedule concurrent search across matching partitions.
 	psfs := make([]partitionSearchFinalizer, len(ptws))
@@ -1337,11 +1331,43 @@ func (s *Storage) searchParallel(workersCount int, sso *storageSearchOptions, qs
 	for _, psf := range psfs {
 		psf()
 	}
+}
 
-	// Decrement references to partitions
+// getPartitionsForTimeRange returns partitions covered by [minTimestamp, maxTimestamp] time range.
+//
+// The caller must call ptwsDecRef when the returned partitions are no longer needed.
+func (s *Storage) getPartitionsForTimeRange(minTimestamp, maxTimestamp int64) (ptws []*partitionWrapper, ptwsDecRef func()) {
+	s.partitionsLock.Lock()
+
+	// s.partitions are sorted by s.day. Use binary search for finding partitions for the given [minTimestamp, maxTimestamp] time range.
+	ptwsTmp := s.partitions
+	minDay := minTimestamp / nsecsPerDay
+	n := sort.Search(len(ptwsTmp), func(i int) bool {
+		return ptwsTmp[i].day >= minDay
+	})
+	ptwsTmp = ptwsTmp[n:]
+	maxDay := maxTimestamp / nsecsPerDay
+	n = sort.Search(len(ptwsTmp), func(i int) bool {
+		return ptwsTmp[i].day > maxDay
+	})
+	ptwsTmp = ptwsTmp[:n]
+
+	// Copy the selected partitions, so they don't interfere with s.partitions.
+	ptws = append([]*partitionWrapper{}, ptwsTmp...)
+
 	for _, ptw := range ptws {
-		ptw.decRef()
+		ptw.incRef()
 	}
+
+	s.partitionsLock.Unlock()
+
+	ptwsDecRef = func() {
+		for _, ptw := range ptws {
+			ptw.decRef()
+		}
+	}
+
+	return ptws, ptwsDecRef
 }
 
 // partitionSearchConcurrencyLimitCh limits the number of concurrent searches in partition.
@@ -1451,28 +1477,37 @@ func initStreamFilters(tenantIDs []TenantID, idb *indexdb, f filter) filter {
 
 func (ddb *datadb) search(pso *partitionSearchOptions, qs *QueryStats, workCh chan<- *blockSearchWorkBatch, stopCh <-chan struct{}) partitionSearchFinalizer {
 	// Select parts with data for the given time range
-	ddb.partsLock.Lock()
-	pws := appendPartsInTimeRange(nil, ddb.bigParts, pso.minTimestamp, pso.maxTimestamp)
-	pws = appendPartsInTimeRange(pws, ddb.smallParts, pso.minTimestamp, pso.maxTimestamp)
-	pws = appendPartsInTimeRange(pws, ddb.inmemoryParts, pso.minTimestamp, pso.maxTimestamp)
-
-	// Increase references to the searched parts, so they aren't deleted during search.
-	// References to the searched parts must be decremented by calling the returned partitionSearchFinalizer.
-	for _, pw := range pws {
-		pw.incRef()
-	}
-	ddb.partsLock.Unlock()
+	pws, pwsDecRef := ddb.getPartsForTimeRange(pso.minTimestamp, pso.maxTimestamp)
 
 	// Apply search to matching parts
 	for _, pw := range pws {
 		pw.p.search(pso, qs, workCh, stopCh)
 	}
 
-	return func() {
+	return pwsDecRef
+}
+
+// getPartsForTimeRange returns ddb parts for the given time range.
+//
+// The caller must call pwsDecRef on the returned parts when they are no longer needed.
+func (ddb *datadb) getPartsForTimeRange(minTimestamp, maxTimestamp int64) (pws []*partWrapper, pwsDecRef func()) {
+	ddb.partsLock.Lock()
+	pws = appendPartsInTimeRange(nil, ddb.bigParts, minTimestamp, maxTimestamp)
+	pws = appendPartsInTimeRange(pws, ddb.smallParts, minTimestamp, maxTimestamp)
+	pws = appendPartsInTimeRange(pws, ddb.inmemoryParts, minTimestamp, maxTimestamp)
+
+	for _, pw := range pws {
+		pw.incRef()
+	}
+	ddb.partsLock.Unlock()
+
+	pwsDecRef = func() {
 		for _, pw := range pws {
 			pw.decRef()
 		}
 	}
+
+	return pws, pwsDecRef
 }
 
 func (p *part) search(pso *partitionSearchOptions, qs *QueryStats, workCh chan<- *blockSearchWorkBatch, stopCh <-chan struct{}) {
@@ -1483,6 +1518,57 @@ func (p *part) search(pso *partitionSearchOptions, qs *QueryStats, workCh chan<-
 		p.searchByStreamIDs(pso, qs, bhss, workCh, stopCh)
 	}
 	putBlockHeaders(bhss)
+}
+
+func (p *part) hasMatchingRows(pso *partitionSearchOptions, stopCh <-chan struct{}) bool {
+	var hasMatch atomic.Bool
+
+	// spin up workers
+	var wg sync.WaitGroup
+	workersCount := cgroup.AvailableCPUs()
+	workCh := make(chan *blockSearchWorkBatch, workersCount)
+	for workerID := 0; workerID < workersCount; workerID++ {
+		wg.Add(1)
+		go func(workerID uint) {
+			defer wg.Done()
+
+			qsLocal := &QueryStats{}
+			bs := getBlockSearch()
+			bm := getBitmap(0)
+
+			for bswb := range workCh {
+				bsws := bswb.bsws
+				for i := range bsws {
+					bsw := &bsws[i]
+
+					if !hasMatch.Load() && !needStop(stopCh) {
+						bs.search(qsLocal, bsw, bm)
+						if bs.br.rowsLen > 0 {
+							hasMatch.Store(true)
+						}
+					}
+
+					bsw.reset()
+				}
+				bswb.bsws = bswb.bsws[:0]
+				putBlockSearchWorkBatch(bswb)
+			}
+
+			putBlockSearch(bs)
+			putBitmap(bm)
+
+		}(uint(workerID))
+	}
+
+	// execute the search
+	var qs QueryStats
+	p.search(pso, &qs, workCh, stopCh)
+
+	// Wait until workers finish their work
+	close(workCh)
+	wg.Wait()
+
+	return hasMatch.Load()
 }
 
 func getBlockHeaders() *blockHeaders {

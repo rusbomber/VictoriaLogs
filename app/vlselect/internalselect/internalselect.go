@@ -82,6 +82,9 @@ var requestHandlers = map[string]func(ctx context.Context, w http.ResponseWriter
 	"/internal/select/stream_field_values": processStreamFieldValuesRequest,
 	"/internal/select/streams":             processStreamsRequest,
 	"/internal/select/stream_ids":          processStreamIDsRequest,
+	"/internal/delete/run_task":            processDeleteRunTask,
+	"/internal/delete/stop_task":           processDeleteStopTask,
+	"/internal/delete/active_tasks":        processDeleteActiveTasks,
 }
 
 func processQueryRequest(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
@@ -306,6 +309,72 @@ func processStreamIDsRequest(ctx context.Context, w http.ResponseWriter, r *http
 	return writeValuesWithHits(w, qctx, streamIDs, cp.DisableCompression)
 }
 
+func processDeleteRunTask(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+	if err := checkProtocolVersion(r, netselect.DeleteRunTaskProtocolVersion); err != nil {
+		return err
+	}
+
+	// Parse query args
+	taskID := r.FormValue("task_id")
+	if taskID == "" {
+		return fmt.Errorf("missing task_id arg")
+	}
+
+	timestamp, err := getInt64FromRequest(r, "timestamp")
+	if err != nil {
+		return err
+	}
+
+	tenantIDsStr := r.FormValue("tenant_ids")
+	tenantIDs, err := logstorage.UnmarshalTenantIDsFromJSON([]byte(tenantIDsStr))
+	if err != nil {
+		return fmt.Errorf("cannot unmarshal tenant_ids=%q: %w", tenantIDsStr, err)
+	}
+
+	fStr := r.FormValue("filter")
+	f, err := logstorage.ParseFilter(fStr)
+	if err != nil {
+		return fmt.Errorf("cannot unmarshal filter=%q: %w", fStr, err)
+	}
+
+	// Execute the delete task
+	return vlstorage.DeleteRunTask(ctx, taskID, timestamp, tenantIDs, f)
+}
+
+func processDeleteStopTask(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+	if err := checkProtocolVersion(r, netselect.DeleteStopTaskProtocolVersion); err != nil {
+		return err
+	}
+
+	taskID := r.FormValue("task_id")
+	if taskID == "" {
+		return fmt.Errorf("missing task_id arg")
+	}
+
+	return vlstorage.DeleteStopTask(ctx, taskID)
+}
+
+func processDeleteActiveTasks(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+	if err := checkProtocolVersion(r, netselect.DeleteActiveTasksProtocolVersion); err != nil {
+		return err
+	}
+
+	tasks, err := vlstorage.DeleteActiveTasks(ctx)
+	if err != nil {
+		return err
+	}
+
+	data := logstorage.MarshalDeleteTasksToJSON(tasks)
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+
+	if _, err := w.Write(data); err != nil {
+		return fmt.Errorf("cannot send response to the client: %w", err)
+	}
+
+	return nil
+}
+
 type commonParams struct {
 	TenantIDs []logstorage.TenantID
 	Query     *logstorage.Query
@@ -329,14 +398,12 @@ func (cp *commonParams) UpdatePerQueryStatsMetrics() {
 }
 
 func getCommonParams(r *http.Request, expectedProtocolVersion string) (*commonParams, error) {
-	version := r.FormValue("version")
-	if version != expectedProtocolVersion {
-		return nil, fmt.Errorf("unexpected protocol version=%q; want %q; the most likely casue of this error is different versions of VictoriaLogs cluster components; "+
-			"make sure VictoriaLogs compoments have the same release version", version, expectedProtocolVersion)
+	if err := checkProtocolVersion(r, expectedProtocolVersion); err != nil {
+		return nil, err
 	}
 
 	tenantIDsStr := r.FormValue("tenant_ids")
-	tenantIDs, err := logstorage.UnmarshalTenantIDs([]byte(tenantIDsStr))
+	tenantIDs, err := logstorage.UnmarshalTenantIDsFromJSON([]byte(tenantIDsStr))
 	if err != nil {
 		return nil, fmt.Errorf("cannot unmarshal tenant_ids=%q: %w", tenantIDsStr, err)
 	}
@@ -371,6 +438,15 @@ func getCommonParams(r *http.Request, expectedProtocolVersion string) (*commonPa
 		AllowPartialResponse: allowPartialResponse,
 	}
 	return cp, nil
+}
+
+func checkProtocolVersion(r *http.Request, expectedProtocolVersion string) error {
+	version := r.FormValue("version")
+	if version != expectedProtocolVersion {
+		return fmt.Errorf("unexpected protocol version=%q; want %q; the most likely casue of this error is different versions of VictoriaLogs cluster components; "+
+			"make sure VictoriaLogs compoments have the same release version", version, expectedProtocolVersion)
+	}
+	return nil
 }
 
 func writeValuesWithHits(w http.ResponseWriter, qctx *logstorage.QueryContext, vhs []logstorage.ValueWithHits, disableCompression bool) error {

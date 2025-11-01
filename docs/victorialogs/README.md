@@ -297,6 +297,41 @@ the recently ingested data.
 
 The `/internal/force_flush` endpoint can be protected from unauthorized access via `-forceFlushAuthKey` [command-line flag](https://docs.victoriametrics.com/victorialogs/#list-of-command-line-flags).
 
+## How to delete logs
+
+By default VictoriaLogs doesn't allow deleting the [ingested logs](https://docs.victoriametrics.com/victorialogs/data-ingestion/).
+This is good from security PoV - an attacker cannot remove the existing logs. There are cases when it is needed to delete logs
+because of [GDPR compliance](https://en.wikipedia.org/wiki/General_Data_Protection_Regulation) or because some sensitive info is ingested in the logs.
+VictoriaLogs enables HTTP API for deleting logs if `-delete.enable` command-line flag is passed to it.
+The following HTTP endpoints are exposed at `http://victoria-logs:9428/` in this case:
+
+- `/delete/run_task?filter=<logsql_filter>` - starts an asynchronous task for deletion of the logs matching the given `<logsql_filter>`.
+  The `<logsql_filter>` may contain arbitrary [LogsQL filter](https://docs.victoriametrics.com/victorialogs/logsql/#filters).
+  For example, request to `http://victoria-logs:9428/delete/run_task?filter={app=nginx}` starts a task for deleting all the logs with
+  `{app="nginx"}` [log stream field](https://docs.victoriametrics.com/victorialogs/keyconcepts/#stream-fields).
+  This endpoint returns `{"task_id":"<id>"}` response, where `<id>` is an unique id of the deletion task, which can be used
+  for tracking the status of the deletion operation and for canceling the deletion task.
+  The deletion operation may take significant amounts of time when VictoriaLogs contains terabytes of logs, since the deletion operation
+  rewrites all the stored logs. That's why it isn't recommended to delete logs on a frequent basis - it is intended for rare exceptional cases
+  such as GDPR compliance or removal of accidentally written security-sensitive data.
+
+- `/delete/stop_task?task_id=<id>` - cancels the deletion task with the given `<id>`. If the canceled task was already running,
+  then it doesn't restore already deleted data.
+
+- `/delete/active_tasks` - returns a JSON array with the following information about active deletion tasks:
+  - `task_id` - the `id` of the task
+  - `account_id` and `project_id` - the `AccountID` and `ProjectID` of the tenant where to delete logs (see [multitenancy](https://docs.victoriametrics.com/victorialogs/#multitenancy))
+  - `filter` - the [LogsQL filter](https://docs.victoriametrics.com/victorialogs/logsql/#filters) passed to `/delete/run_task?filter=...`.
+  - `start_time` - the start time of the deletion task.
+
+The logs scheduled for the deletion via `/delete/run_task` endpoint main remain visible until the deletion task is complete.
+The deletion task is complete when the `/delete/active_task` endpoint stops returning it.
+
+If the deletion API must be enabled in [cluster version of VictoriaLogs](https://docs.victoriametrics.com/victorialogs/cluster/),
+then `-delete.enable` command-line flag must be passed to `vlselect` nodes (this enables the deletion API at `vlselect` nodes),
+while `-internaldelete.enable` command-line flag must be passed to `vlstorage` nodes (this enables internal cluster API
+for receiving deletion requests from `vlselect` nodes).
+
 ## High Availability
 
 ### High Availability (HA) Setup with VictoriaLogs Single-Node Instances

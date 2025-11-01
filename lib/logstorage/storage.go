@@ -1,6 +1,7 @@
 package logstorage
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/cgroup"
+	"github.com/VictoriaMetrics/VictoriaMetrics/lib/contextutil"
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/fs"
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/logger"
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/snapshot/snapshotutil"
@@ -188,6 +190,12 @@ type Storage struct {
 	//
 	// It reduces the load on persistent storage during querying by _stream:{...} filter.
 	filterStreamCache *cache
+
+	// deleteTasksLock protects deleteTasks
+	deleteTasksLock sync.Mutex
+
+	// deleteTasks contains a list of active and pending delete tasks
+	deleteTasks []*DeleteTask
 }
 
 // PartitionAttach attaches the partition with the given name to s.
@@ -357,6 +365,89 @@ func (s *Storage) PartitionSnapshotList() []string {
 	return snapshotPaths
 }
 
+// DeleteRunTask starts deletion of logs according to the given filter f for the given tenantIDs.
+//
+// The taskID must contain an unique id of the task. It is used for tracking the task at the list returned by DeleteActiveTasks().
+// The timestamp must contain the timestamp in seconds when the task is started.
+func (s *Storage) DeleteRunTask(_ context.Context, taskID string, timestamp int64, tenantIDs []TenantID, f *Filter) error {
+	// Register the task in the list of active delete tasks, so it survives application restarts and crashes.
+	dt := newDeleteTask(taskID, tenantIDs, f.String(), timestamp)
+
+	s.deleteTasksLock.Lock()
+	defer s.deleteTasksLock.Unlock()
+
+	// Verify that the task with the given taskID doesn't exist yet
+	for _, dt := range s.deleteTasks {
+		if dt.TaskID == taskID {
+			return fmt.Errorf("the delete task with task_id=%q is already registered", taskID)
+		}
+	}
+
+	// Register the task and persist it to the file.
+	s.deleteTasks = append(s.deleteTasks, dt)
+	s.mustSaveDeleteTasksLocked()
+
+	return nil
+}
+
+// mustSaveDeleteTasksLocked saves s.deleteTasks to file
+//
+// The s.deleteTaskLock must be locked while calling this function.
+func (s *Storage) mustSaveDeleteTasksLocked() {
+	deleteTasksPath := filepath.Join(s.path, deleteTasksFilename)
+	mustWriteDeleteTasksToFile(deleteTasksPath, s.deleteTasks)
+}
+
+// DeleteStopTask stops the delete task with the given taskID.
+//
+// It waits until the task is stopped before returning.
+// If there is no a task with the given taskID, then the function returns immediately.
+func (s *Storage) DeleteStopTask(ctx context.Context, taskID string) error {
+	var doneCh <-chan struct{}
+
+	s.deleteTasksLock.Lock()
+
+	for i, dt := range s.deleteTasks {
+		if dt.TaskID != taskID {
+			continue
+		}
+
+		if dt.cancel != nil {
+			// Cancel the currently executed task. The task executor will remove this task from s.deleteTasks
+			dt.cancel()
+			doneCh = dt.doneCh
+		} else {
+			// The task is waiting to be executed. Drop it.
+			s.deleteTasks = append(s.deleteTasks[:i], s.deleteTasks[i+1:]...)
+			s.mustSaveDeleteTasksLocked()
+		}
+		break
+	}
+
+	s.deleteTasksLock.Unlock()
+
+	if doneCh == nil {
+		return nil
+	}
+
+	// Wait until the task is canceled.
+	select {
+	case <-doneCh:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// DeleteActiveTasks returns currently running active delete tasks, which were started via DeleteRunTask().
+func (s *Storage) DeleteActiveTasks(_ context.Context) ([]*DeleteTask, error) {
+	s.deleteTasksLock.Lock()
+	dts := append([]*DeleteTask{}, s.deleteTasks...)
+	s.deleteTasksLock.Unlock()
+
+	return dts, nil
+}
+
 // EnableLogNewStreams enables logging newly ingested streams during the given number of seconds
 func (s *Storage) EnableLogNewStreams(seconds int) {
 	if seconds <= 0 {
@@ -495,6 +586,10 @@ func MustOpenStorage(path string, cfg *StorageConfig) *Storage {
 	streamIDCache := newCache()
 	filterStreamCache := newCache()
 
+	// Load delete tasks which may be left since the previous restart
+	deleteTasksPath := filepath.Join(path, deleteTasksFilename)
+	deleteTasks := mustReadDeleteTasksFromFile(deleteTasksPath)
+
 	s := &Storage{
 		path:                   path,
 		retention:              retention,
@@ -511,6 +606,8 @@ func MustOpenStorage(path string, cfg *StorageConfig) *Storage {
 
 		streamIDCache:     streamIDCache,
 		filterStreamCache: filterStreamCache,
+
+		deleteTasks: deleteTasks,
 	}
 	s.logNewStreams.Store(cfg.LogNewStreams)
 
@@ -580,6 +677,7 @@ func MustOpenStorage(path string, cfg *StorageConfig) *Storage {
 	s.partitions = ptws
 	s.runRetentionWatcher()
 	s.runMaxDiskSpaceUsageWatcher()
+	s.runDeleteTasksWatcher()
 	return s
 }
 
@@ -604,6 +702,14 @@ func (s *Storage) runMaxDiskSpaceUsageWatcher() {
 	s.wg.Add(1)
 	go func() {
 		s.watchMaxDiskSpaceUsage()
+		s.wg.Done()
+	}()
+}
+
+func (s *Storage) runDeleteTasksWatcher() {
+	s.wg.Add(1)
+	go func() {
+		s.watchDeleteTasks()
 		s.wg.Done()
 	}()
 }
@@ -646,7 +752,6 @@ func (s *Storage) watchRetention() {
 			logger.Infof("the partition %s is scheduled to be deleted because it is outside the -retentionPeriod=%dd", ptw.pt.path, durationToDays(s.retention))
 			ptw.mustDrop.Store(true)
 			ptw.decRef()
-
 			ptwsToDelete[i] = nil
 		}
 
@@ -737,6 +842,142 @@ func (s *Storage) watchMaxDiskSpaceUsage() {
 	}
 }
 
+func (s *Storage) watchDeleteTasks() {
+	d := timeutil.AddJitterToDuration(time.Second)
+	ticker := time.NewTicker(d)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-s.stopCh:
+			return
+		case <-ticker.C:
+		}
+
+		var dt *DeleteTask
+
+		s.deleteTasksLock.Lock()
+		if len(s.deleteTasks) > 0 {
+			dt = s.deleteTasks[0]
+
+			// initialize dt.ctx and dt.cancel under the lock in order to avoid races
+			// with canceling the task at Storage.DeleteStopTask()
+			dt.ctx, dt.cancel = contextutil.NewStopChanContext(s.stopCh)
+			dt.doneCh = make(chan struct{})
+		}
+		s.deleteTasksLock.Unlock()
+
+		if dt == nil {
+			// There are no delete tasks.
+			continue
+		}
+
+		// Process delete tasks sequentially in order to limit resource usage needed for the logs' deletion.
+
+		ok := s.processDeleteTask(dt.ctx, dt)
+		close(dt.doneCh)
+		dt.cancel()
+
+		s.deleteTasksLock.Lock()
+
+		// Set dt.ctx and dt.cancel to nil under the lock in order to avoid races
+		// with canceling the task at Storage.DeleteStopTask().
+		dt.ctx = nil
+		dt.cancel = nil
+		dt.doneCh = nil
+
+		s.deleteTasks = s.deleteTasks[1:]
+		if !ok {
+			// The delete task coudn't be completed now. Try it later.
+			s.deleteTasks = append(s.deleteTasks, dt)
+		}
+		s.mustSaveDeleteTasksLocked()
+
+		s.deleteTasksLock.Unlock()
+	}
+}
+
+// processDeleteTask processes dt.
+//
+// true is returned on successfully processed dt or on explicitly canceled dt.
+// false is returned if dt couldn't be processed at the moment, so it must be processed later.
+func (s *Storage) processDeleteTask(ctx context.Context, dt *DeleteTask) bool {
+	logger.Infof("started processing delete task %s", dt)
+	startTime := time.Now()
+
+	f, err := ParseFilter(dt.Filter)
+	if err != nil {
+		logger.Panicf("BUG: cannot parse filter from delete task: [%s]", dt.Filter)
+	}
+
+	q := &Query{
+		f:         f.f,
+		timestamp: dt.StartTime.UnixNano(),
+	}
+
+	// Add time filter ending at the delete task start time.
+	// This avoids deleting logs from the future.
+	start := int64(math.MinInt64)
+	end := dt.StartTime.UnixNano()
+	q.AddTimeFilter(start, end)
+
+	var qs QueryStats
+	qctx := NewQueryContext(ctx, &qs, dt.TenantIDs, q, false)
+
+	// Initialize subqueries
+	qNew, err := initSubqueries(qctx, s.runQuery, true)
+	if err != nil {
+		logger.Errorf("cannot process delete task with task_id=%q while initializing subqueries: %s; retrying later", dt.TaskID, err)
+		return false
+	}
+	q = qNew
+
+	sso := s.getSearchOptions(dt.TenantIDs, q)
+
+	// reset fieldsFilter in order to avoid loading all the log fields
+	// during search for parts which contain rows to delete, since these fields aren't needed.
+	sso.fieldsFilter.Reset()
+
+	// delete rows matching q.f
+	stopCh := ctx.Done()
+	if !s.deleteRows(sso, stopCh) {
+		if needStop(s.stopCh) {
+			logger.Infof("the storage is stopped while executing the delete task with task_id=%q; postponing the task for later execution", dt.TaskID)
+			return false
+		}
+
+		if needStop(stopCh) {
+			// The task has been canceled explicitly. Return true, so it isn't re-scheduled for later execution.
+			logger.Infof("the delete task with task_id=%q is explicitly canceled after %.3f seconds", dt.TaskID, time.Since(startTime).Seconds())
+			return true
+		}
+
+		// The task couldn't be processed at the moment
+		logger.Warnf("cannot proceeed with the delete task with task_id=%q in %.3f seconds; retrying it later", dt.TaskID, time.Since(startTime).Seconds())
+		return false
+	}
+
+	logger.Infof("finished processing delete task %s in %.3f seconds", dt, time.Since(startTime).Seconds())
+	return true
+}
+
+func (s *Storage) deleteRows(sso *storageSearchOptions, stopCh <-chan struct{}) bool {
+	ptws, ptwsDecRef := s.getPartitionsForTimeRange(sso.minTimestamp, sso.maxTimestamp)
+	defer ptwsDecRef()
+
+	// Delete rows sequentially in every partition in order to limit resource usage needed for the logs' deletion.
+	ok := true
+	for _, ptw := range ptws {
+		if !ptw.pt.deleteRows(sso, stopCh) {
+			// Return false if at least a single deletion was unsuccessful.
+			// Continue deletion of rows at other partitions, since they may be successful.
+			ok = false
+		}
+	}
+
+	return ok
+}
+
 func (s *Storage) updateDeletedPartitionsLocked(ptwsToDelete []*partitionWrapper) {
 	for _, ptw := range ptwsToDelete {
 		if !slices.Contains(s.deletedPartitions, ptw.day) {
@@ -824,7 +1065,7 @@ func (s *Storage) MustForceMerge(partitionNamePrefix string) {
 // before calling MustAddRows.
 //
 // The added rows become visible for search after small duration of time.
-// Call DebugFlush if the added rows must be queried immediately (for example, it tests).
+// Call DebugFlush if the added rows must be queried immediately (for example, in tests).
 func (s *Storage) MustAddRows(lr *LogRows) {
 	// Fast path - try adding all the rows to the hot partition
 	s.partitionsLock.Lock()
