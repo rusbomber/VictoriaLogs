@@ -75,8 +75,8 @@ func parseProtobufRequest(data []byte, lmp insertutil.LogMessageProcessor, msgFi
 		return fmt.Errorf("cannot parse request body: %w", err)
 	}
 
-	fields := getFields()
-	defer putFields(fields)
+	fieldsTmp := logstorage.GetFields()
+	defer logstorage.PutFields(fieldsTmp)
 
 	var msgParser *logstorage.JSONParser
 	if parseMessage {
@@ -91,26 +91,27 @@ func parseProtobufRequest(data []byte, lmp insertutil.LogMessageProcessor, msgFi
 		stream := &streams[i]
 		// st.Labels contains labels for the stream.
 		// Labels are same for all entries in the stream.
-		fields.fields, err = parsePromLabels(fields.fields[:0], stream.Labels)
+		fieldsTmp.Reset()
+		fieldsTmp.Fields, err = parsePromLabels(fieldsTmp.Fields, stream.Labels)
 		if err != nil {
 			return fmt.Errorf("cannot parse stream labels %q: %w", stream.Labels, err)
 		}
-		commonFieldsLen := len(fields.fields)
+		commonFieldsLen := len(fieldsTmp.Fields)
 
 		entries := stream.Entries
 		for j := range entries {
 			e := &entries[j]
-			fields.fields = fields.fields[:commonFieldsLen]
+			fieldsTmp.Fields = fieldsTmp.Fields[:commonFieldsLen]
 
 			for _, lp := range e.StructuredMetadata {
-				fields.fields = append(fields.fields, logstorage.Field{
+				fieldsTmp.Fields = append(fieldsTmp.Fields, logstorage.Field{
 					Name:  lp.Name,
 					Value: lp.Value,
 				})
 			}
 
 			allowMsgRenaming := false
-			fields.fields, allowMsgRenaming = addMsgField(fields.fields, msgParser, e.Line)
+			fieldsTmp.Fields, allowMsgRenaming = addMsgField(fieldsTmp.Fields, msgParser, e.Line)
 
 			ts := e.Timestamp.UnixNano()
 			if ts == 0 {
@@ -119,34 +120,15 @@ func parseProtobufRequest(data []byte, lmp insertutil.LogMessageProcessor, msgFi
 
 			var streamFields []logstorage.Field
 			if useDefaultStreamFields {
-				streamFields = fields.fields[:commonFieldsLen]
+				streamFields = fieldsTmp.Fields[:commonFieldsLen]
 			}
 			if allowMsgRenaming {
-				logstorage.RenameField(fields.fields[commonFieldsLen:], msgFields, "_msg")
+				logstorage.RenameField(fieldsTmp.Fields[commonFieldsLen:], msgFields, "_msg")
 			}
-			lmp.AddRow(ts, fields.fields, streamFields)
+			lmp.AddRow(ts, fieldsTmp.Fields, streamFields)
 		}
 	}
 	return nil
-}
-
-func getFields() *fields {
-	v := fieldsPool.Get()
-	if v == nil {
-		return &fields{}
-	}
-	return v.(*fields)
-}
-
-func putFields(f *fields) {
-	f.fields = f.fields[:0]
-	fieldsPool.Put(f)
-}
-
-var fieldsPool sync.Pool
-
-type fields struct {
-	fields []logstorage.Field
 }
 
 // parsePromLabels parses log fields in Prometheus text exposition format from s, appends them to dst and returns the result.

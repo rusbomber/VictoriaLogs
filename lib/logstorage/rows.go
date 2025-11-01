@@ -3,6 +3,7 @@ package logstorage
 import (
 	"fmt"
 	"sort"
+	"sync"
 
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/bytesutil"
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/encoding"
@@ -267,3 +268,36 @@ func sortFieldsByName(fields []Field) {
 		return fields[i].Name < fields[j].Name
 	})
 }
+
+// Fields holds a slice of Field items
+type Fields struct {
+	// Fields is a slice fields
+	Fields []Field
+}
+
+// Reset resets f.
+func (f *Fields) Reset() {
+	clear(f.Fields)
+	f.Fields = f.Fields[:0]
+}
+
+// GetFields returns an empty Fields from the pool.
+//
+// Pass the returned Fields to PutFields() when it is no longer needed.
+func GetFields() *Fields {
+	v := fieldsPool.Get()
+	if v == nil {
+		return &Fields{}
+	}
+	return v.(*Fields)
+}
+
+// PutFields returns f to the pool.
+//
+// f cannot be used after returning to the pool. Use GetFields() for obtaining an empty Fields from the pool.
+func PutFields(f *Fields) {
+	f.Reset()
+	fieldsPool.Put(f)
+}
+
+var fieldsPool sync.Pool

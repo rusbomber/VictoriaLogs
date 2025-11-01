@@ -81,8 +81,8 @@ func parseJSONRequest(data []byte, lmp insertutil.LogMessageProcessor, msgFields
 		return fmt.Errorf("`streams` item in the parsed JSON must contain an array; got %q", streamsV)
 	}
 
-	fields := getFields()
-	defer putFields(fields)
+	fieldsTmp := logstorage.GetFields()
+	defer logstorage.PutFields(fieldsTmp)
 
 	var msgParser *logstorage.JSONParser
 	if parseMessage {
@@ -94,7 +94,6 @@ func parseJSONRequest(data []byte, lmp insertutil.LogMessageProcessor, msgFields
 
 	for _, stream := range streams {
 		// populate common labels from `stream` dict
-		fields.fields = fields.fields[:0]
 		labelsV := stream.Get("stream")
 		var labels *fastjson.Object
 		if labelsV != nil {
@@ -104,9 +103,10 @@ func parseJSONRequest(data []byte, lmp insertutil.LogMessageProcessor, msgFields
 			}
 			labels = o
 		}
+		fieldsTmp.Reset()
 		labels.Visit(func(k []byte, v *fastjson.Value) {
 			vStr := getMarshaledJSONValue(v)
-			fields.fields = append(fields.fields, logstorage.Field{
+			fieldsTmp.Fields = append(fieldsTmp.Fields, logstorage.Field{
 				Name:  bytesutil.ToUnsafeString(k),
 				Value: bytesutil.ToUnsafeString(vStr),
 			})
@@ -125,9 +125,9 @@ func parseJSONRequest(data []byte, lmp insertutil.LogMessageProcessor, msgFields
 			return fmt.Errorf("`values` item in the parsed JSON must contain an array; got %q", linesV)
 		}
 
-		commonFieldsLen := len(fields.fields)
+		commonFieldsLen := len(fieldsTmp.Fields)
 		for _, line := range lines {
-			fields.fields = fields.fields[:commonFieldsLen]
+			fieldsTmp.Fields = fieldsTmp.Fields[:commonFieldsLen]
 
 			lineA, err := line.Array()
 			if err != nil {
@@ -158,7 +158,7 @@ func parseJSONRequest(data []byte, lmp insertutil.LogMessageProcessor, msgFields
 				}
 				structuredMetadata.Visit(func(k []byte, v *fastjson.Value) {
 					vStr := getMarshaledJSONValue(v)
-					fields.fields = append(fields.fields, logstorage.Field{
+					fieldsTmp.Fields = append(fieldsTmp.Fields, logstorage.Field{
 						Name:  bytesutil.ToUnsafeString(k),
 						Value: bytesutil.ToUnsafeString(vStr),
 					})
@@ -174,16 +174,16 @@ func parseJSONRequest(data []byte, lmp insertutil.LogMessageProcessor, msgFields
 				return fmt.Errorf("unexpected log message type for %q; want string", lineA[1])
 			}
 			allowMsgRenaming := false
-			fields.fields, allowMsgRenaming = addMsgField(fields.fields, msgParser, bytesutil.ToUnsafeString(msg))
+			fieldsTmp.Fields, allowMsgRenaming = addMsgField(fieldsTmp.Fields, msgParser, bytesutil.ToUnsafeString(msg))
 
 			var streamFields []logstorage.Field
 			if useDefaultStreamFields {
-				streamFields = fields.fields[:commonFieldsLen]
+				streamFields = fieldsTmp.Fields[:commonFieldsLen]
 			}
 			if allowMsgRenaming {
-				logstorage.RenameField(fields.fields[commonFieldsLen:], msgFields, "_msg")
+				logstorage.RenameField(fieldsTmp.Fields[commonFieldsLen:], msgFields, "_msg")
 			}
-			lmp.AddRow(ts, fields.fields, streamFields)
+			lmp.AddRow(ts, fieldsTmp.Fields, streamFields)
 		}
 	}
 
