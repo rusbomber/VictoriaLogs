@@ -366,7 +366,7 @@ func processDeleteActiveTasks(ctx context.Context, w http.ResponseWriter, r *htt
 
 	data := logstorage.MarshalDeleteTasksToJSON(tasks)
 
-	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Type", "application/json")
 
 	if _, err := w.Write(data); err != nil {
 		return fmt.Errorf("cannot send response to the client: %w", err)
