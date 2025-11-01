@@ -553,6 +553,8 @@ Pass `-help` to VictoriaLogs in order to see the list of supported command-line 
         Default value for _msg field if the ingested log entry doesn't contain it; see https://docs.victoriametrics.com/victorialogs/keyconcepts/#message-field (default "missing _msg field; see https://docs.victoriametrics.com/victorialogs/keyconcepts/#message-field")
   -defaultParallelReaders int
         Default number of parallel data readers to use for executing every query; higher number of readers may help increasing query performance on high-latency storage such as NFS or S3 at the cost of higher RAM usage; see https://docs.victoriametrics.com/victorialogs/logsql/#parallel_readers-query-option (default 32)
+  -delete.enable
+        Whether to enable /delete/* HTTP endpoints; see https://docs.victoriametrics.com/victorialogs/#how-to-delete-logs
   -elasticsearch.version string
         Elasticsearch version to report to client (default "8.9.0")
   -enableTCP6
@@ -641,6 +643,8 @@ Pass `-help` to VictoriaLogs in order to see the list of supported command-line 
         Whether to disable caches for interned strings. This may reduce memory usage at the cost of higher CPU usage. See https://en.wikipedia.org/wiki/String_interning . See also -internStringCacheExpireDuration and -internStringMaxLen
   -internStringMaxLen int
         The maximum length for strings to intern. A lower limit may save memory at the cost of higher CPU usage. See https://en.wikipedia.org/wiki/String_interning . See also -internStringDisableCache and -internStringCacheExpireDuration (default 500)
+  -internaldelete.enable
+        Whether to enable /internal/delete/* HTTP endpoints, which are used by vlselect for deleting logs via delete API at vlstorage nodes; see https://docs.victoriametrics.com/victorialogs/#how-to-delete-logs
   -internalinsert.disable
         Whether to disable /internal/insert HTTP endpoint. See https://docs.victoriametrics.com/victorialogs/cluster/#security
   -internalinsert.maxRequestSize size
