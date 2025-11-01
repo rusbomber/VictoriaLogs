@@ -585,7 +585,7 @@ func (idb *indexdb) marshalStreamFilterCacheKey(dst []byte, tenantIDs []TenantID
 	dst = encoding.MarshalBytes(dst, bytesutil.ToUnsafeBytes(idb.partitionName))
 	dst = encoding.MarshalVarUint64(dst, uint64(len(tenantIDs)))
 	for i := range tenantIDs {
-		dst = tenantIDs[i].Marshal(dst)
+		dst = tenantIDs[i].marshal(dst)
 	}
 	dst = sf.marshalForCacheKey(dst)
 	return dst
@@ -986,7 +986,7 @@ const commonPrefixLen = 1 + 8
 
 func marshalCommonPrefix(dst []byte, nsPrefix byte, tenantID TenantID) []byte {
 	dst = append(dst, nsPrefix)
-	dst = tenantID.Marshal(dst)
+	dst = tenantID.marshal(dst)
 	return dst
 }
 
@@ -996,7 +996,7 @@ func unmarshalCommonPrefix(dstTenantID *TenantID, src []byte) ([]byte, byte, err
 	}
 	prefix := src[0]
 	src = src[1:]
-	tail, err := dstTenantID.Unmarshal(src)
+	tail, err := dstTenantID.unmarshal(src)
 	if err != nil {
 		return nil, 0, fmt.Errorf("cannot unmarshal tenantID: %w", err)
 	}
