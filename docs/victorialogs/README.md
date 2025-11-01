@@ -320,7 +320,7 @@ The following HTTP endpoints are exposed at `http://victoria-logs:9428/` in this
 
 - `/delete/active_tasks` - returns a JSON array with the following information about active deletion tasks:
   - `task_id` - the `id` of the task
-  - `account_id` and `project_id` - the `AccountID` and `ProjectID` of the tenant where to delete logs (see [multitenancy](https://docs.victoriametrics.com/victorialogs/#multitenancy))
+  - `tenant_ids` - the list of [tenants](https://docs.victoriametrics.com/victorialogs/#multitenancy) for the given deletion task
   - `filter` - the [LogsQL filter](https://docs.victoriametrics.com/victorialogs/logsql/#filters) passed to `/delete/run_task?filter=...`.
   - `start_time` - the start time of the deletion task.
 
